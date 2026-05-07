@@ -36,7 +36,7 @@ class JmOptionPlugin:
         return cls(option)
 
     def log(self, msg, topic=None):
-        if self.log_enable:
+        if not self.log_enable:
             return
 
         jm_log(
@@ -136,7 +136,7 @@ class JmOptionPlugin:
             filepath = os.path.join(base_dir, DirRule.apply_rule_to_filename(album, photo, filename_rule) + fix_suffix(suffix))
 
         mkdir_if_not_exists(base_dir)
-        return filepath
+        return fix_filepath(filepath)
 
 
 class JmLoginPlugin(JmOptionPlugin):
@@ -158,7 +158,6 @@ class JmLoginPlugin(JmOptionPlugin):
 
         cookies = dict(client['cookies'])
         self.option.update_cookies(cookies)
-        JmModuleConfig.APP_COOKIES = cookies
 
         self.log('登录成功')
 
@@ -321,7 +320,7 @@ class ZipPlugin(JmOptionPlugin):
                album: JmAlbumDetail = None,
                photo: JmPhotoDetail = None,
                delete_original_file=False,
-               level='photo',
+               level=None,
                filename_rule='Ptitle',
                suffix='zip',
                zip_dir='./',
@@ -332,6 +331,9 @@ class ZipPlugin(JmOptionPlugin):
         from .jm_downloader import JmDownloader
         downloader: JmDownloader
         self.downloader = downloader
+        # level 自动推导：有 album 则合并打包，只有 photo 则单章打包
+        if level is None:
+            level = 'album' if album is not None else 'photo'
         self.level = level
         self.delete_original_file = delete_original_file
 
@@ -378,7 +380,9 @@ class ZipPlugin(JmOptionPlugin):
                 relpath = os.path.relpath(abspath, photo_dir)
                 f.write(abspath, relpath)
 
-        self.log(f'压缩章节[{photo.photo_id}]成功 → {zip_path}', 'finish')
+        # 打印结果
+        self.log(f'{photo.alias_cn()}压缩成功！'
+                 f'[{photo}] → [{zip_path}]', 'finish')
         path_to_delete.append(self.unified_path(photo_dir))
 
     @staticmethod
@@ -401,7 +405,9 @@ class ZipPlugin(JmOptionPlugin):
                     abspath = os.path.join(photo_dir, file)
                     relpath = os.path.relpath(abspath, album_dir)
                     f.write(abspath, relpath)
-        self.log(f'压缩本子[{album.album_id}]成功 → {zip_path}', 'finish')
+        # 打印结果
+        self.log(f'{album.alias_cn()}压缩成功！'
+                 f'[{album}] → [{zip_path}]', 'finish')
 
     def after_zip(self, path_to_delete: List[str]):
         # 删除所有原文件
@@ -784,7 +790,13 @@ class Img2pdfPlugin(JmOptionPlugin):
         if not result:
             return
         img_path_ls, img_dir_ls = result
-        self.log(f'Convert Successfully: JM{album or photo} → {pdf_filepath}')
+
+        # noinspection PyTypeChecker
+        detail: DetailEntity = album or photo
+
+        # 打印结果
+        self.log(f'{detail.alias_cn()}合并PDF成功！'
+                 f'[{detail}] → [{pdf_filepath}]', 'finish')
 
         # 执行删除
         img_path_ls += img_dir_ls
@@ -861,7 +873,12 @@ class LongImgPlugin(JmOptionPlugin):
         img_path_ls = self.write_img_2_long_img(long_img_path, album, photo)
         if not img_path_ls:
             return
-        self.log(f'Convert Successfully: JM{album or photo} → {long_img_path}')
+        # noinspection PyTypeChecker
+        detail: DetailEntity = album or photo
+
+        # 打印结果
+        self.log(f'{detail.alias_cn()}合并长图成功！'
+                 f'[{detail}] → [{long_img_path}]', 'finish')
 
         # 执行删除
         self.execute_deletion(img_path_ls)
