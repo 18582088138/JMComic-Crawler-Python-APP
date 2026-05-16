@@ -26,7 +26,7 @@ class JmcomicText:
     pattern_html_album_album_id = compile(r'<span class="number">.*?：JM(\d+)</span>')
     pattern_html_album_scramble_id = compile(r'var scramble_id = (\d+);')
     pattern_html_album_name = compile(r'id="book-name"[^>]*?>([\s\S]*?)<')
-    pattern_html_album_description = compile(r'叙述：([\s\S]*?)</h2>')
+    pattern_html_album_description = compile(r'[叙|敘]述：([\s\S]*?)</h2>')
     pattern_html_album_episode_list = compile(r'data-album="(\d+)"[^>]*>[\s\S]*?第(\d+)[话話]([\s\S]*?)<[\s\S]*?>')
     pattern_html_album_page_count = compile(r'<span class="pagecount">.*?:(\d+)</span>')
     pattern_html_album_pub_date = compile(r'>上架日期 : (.*?)</span>')

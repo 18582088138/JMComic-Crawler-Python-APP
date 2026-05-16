@@ -2,7 +2,7 @@
 # 被依赖方 <--- 使用方
 # config <--- entity <--- toolkit <--- client <--- option <--- downloader
 
-__version__ = '2.6.19'
+__version__ = '2.6.20'
 
 from .api import *
 from .jm_plugin import *
