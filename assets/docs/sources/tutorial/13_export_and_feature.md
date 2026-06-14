@@ -140,7 +140,6 @@ plugins:
         filename_rule: Atitle
     - plugin: zip # 合并为压缩文件
       kwargs:
-        level: album
         zip_dir: ./output
 ```
 
