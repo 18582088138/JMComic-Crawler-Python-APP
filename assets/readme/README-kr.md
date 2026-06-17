@@ -37,7 +37,7 @@
 > **안내: JM 서버의 부하를 줄이기 위해 한 번에 너무 많은 앨범을 다운로드하지 말아주세요 🙏🙏🙏**
 
 
-![introduction.jpg](../docs/sources/images/introduction.jpg)
+![introduction.jpg](https://raw.githubusercontent.com/hect0x7/hect0x7/master/images/jmcomic-intro-main.png)
 
 
 ## 프로젝트 소개

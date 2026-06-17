@@ -37,7 +37,7 @@
 > **Friendly Prompt: Cherish JM. In order to reduce the pressure on JM servers, please do not download too many albums at once 🙏🙏🙏.**
 
 
-![introduction.jpg](../docs/sources/images/introduction.jpg)
+![introduction.jpg](https://raw.githubusercontent.com/hect0x7/hect0x7/master/images/jmcomic-intro-main.png)
 
 
 ## Introduction

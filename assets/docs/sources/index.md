@@ -11,7 +11,7 @@
 
 ## 一图看懂 JMComic 工具生态
 
-![introduction.jpg](images/introduction.jpg)
+![introduction.jpg](https://raw.githubusercontent.com/hect0x7/hect0x7/master/images/jmcomic-intro-main.png)
 
 ## 入门
 

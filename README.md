@@ -37,7 +37,7 @@
 > 
 
 
-![introduction.jpg](./assets/docs/sources/images/introduction.jpg)
+![introduction.jpg](https://raw.githubusercontent.com/hect0x7/hect0x7/master/images/jmcomic-intro-main.png)
 
 
 ## 项目介绍

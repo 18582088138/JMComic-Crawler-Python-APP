@@ -37,7 +37,7 @@
 > **ご案内：JMのサーバー負荷を軽減するため、一度に大量のダウンロードは控えてください 🙏🙏🙏**
 
 
-![introduction.jpg](../docs/sources/images/introduction.jpg)
+![introduction.jpg](https://raw.githubusercontent.com/hect0x7/hect0x7/master/images/jmcomic-intro-main.png)
 
 
 ## プロジェクトの紹介
