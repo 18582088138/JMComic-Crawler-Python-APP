@@ -1,0 +1,25 @@
+# GitHub Pages 移动端站点构建配置（配合 usage/workflow_pages_build.py）
+log: pretty
+
+dir_rule:
+  base_dir: ${JM_PAGES_RAW_DIR}
+  rule: Bd_Pindex
+
+client:
+  impl: api # 使用api可免登录下载本子
+  domain:
+    html: [ jmcomic1.me, jmcomic.me ]
+  retry_times: 5
+
+# 插件配置
+plugins:
+  after_init:
+    - plugin: usage_log # 实时打印硬件占用率的插件
+      kwargs:
+        interval: 0.5 # 间隔时间
+        enable_warning: false # 不告警
+
+    - plugin: client_proxy # 提高移动端的请求效率的插件
+      kwargs:
+        proxy_client_key: photo_concurrent_fetcher_proxy
+        whitelist: [ api, ]

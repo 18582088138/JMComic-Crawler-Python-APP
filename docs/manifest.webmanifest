@@ -1,0 +1,14 @@
+{
+  "name": "JMComic 云书架",
+  "short_name": "云书架",
+  "description": "GitHub Actions + Pages 云端漫画书架",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0d13",
+  "theme_color": "#0b0d13",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

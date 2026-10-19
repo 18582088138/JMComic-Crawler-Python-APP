@@ -1,0 +1,115 @@
+name: 移动端爬取 (Pages)
+
+# 两种触发方式：
+# 1. workflow_dispatch —— 移动端网页通过 GitHub API 触发（需要 Token），也可在 Actions 页面手动运行
+# 2. issues —— 移动端网页引导用户创建标题为 `[jm] 本子ID` 的 issue 触发（无需 Token）
+on:
+  workflow_dispatch:
+    inputs:
+      JM_ID:
+        type: string
+        description: '本子链接或ID（如 https://18comic.vip/album/1483616/... 或 1483616）'
+        required: true
+
+      MODE:
+        description: '产物模式'
+        type: choice
+        default: '在线阅览 + 打包下载'
+        options:
+          - '在线阅览 + 打包下载'
+          - '仅在线阅览'
+          - '仅打包下载'
+
+      KEEP_LATEST:
+        type: number
+        description: '书库最多保留几本（超出自动清理最旧的）'
+        default: 10
+
+      CLIENT_IMPL:
+        type: string
+        description: '客户端类型（client.impl），下载失败时可尝试填入 api 或 html 重试'
+        default: ''
+        required: false
+
+  issues:
+    types: [ opened, reopened ]
+
+permissions:
+  contents: write # 推送 docs/ 站点数据
+  issues: write   # 在 issue 下回复下载链接
+
+concurrency:
+  group: pages-crawler
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # issue 触发时，仅处理标题以 [jm] 开头的 issue
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[jm]')
+    runs-on: ubuntu-latest
+    env:
+      JM_PAGES_INPUT: ${{ github.event.inputs.JM_ID || github.event.issue.title }}
+      JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
+      JM_PAGES_KEEP: ${{ github.event.inputs.KEEP_LATEST || 10 }}
+      JM_PAGES_ISSUE_BODY: ${{ github.event.issue.body }}
+      CLIENT_IMPL: ${{ github.event.inputs.CLIENT_IMPL }}
+      JM_USERNAME: ${{ secrets.JM_USERNAME }}
+      JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 留一定历史深度，便于并发提交时 rebase
+          fetch-depth: 50
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependency
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./
+
+      - name: 解析产物模式
+        run: |
+          case "$JM_PAGES_MODE_INPUT" in
+            *仅在线阅览*) mode=read ;;
+            *仅打包下载*) mode=zip ;;
+            *) mode=both ;;
+          esac
+          echo "JM_PAGES_MODE=$mode" >> $GITHUB_ENV
+          echo "产物模式: $mode"
+
+      - name: 下载本子并生成站点数据
+        run: |
+          python usage/workflow_pages_build.py
+
+      - name: 提交并推送站点数据
+        id: push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          if git diff --cached --quiet; then
+            echo "站点数据无变更，跳过提交"
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git commit -m "pages: 更新移动端书库 ($(date -u '+%Y-%m-%d %H:%M UTC')) [skip ci]"
+          git pull --rebase --autostash origin master || { git rebase --abort; exit 1; }
+          git push origin HEAD:master
+          echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: 回复 issue（提供访问链接）
+        if: github.event_name == 'issues' && steps.push.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PAGES_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          AID=$(python -c "import sys; sys.path.insert(0, 'usage'); from workflow_pages_build import parse_album_id, env; print(parse_album_id(env('JM_PAGES_INPUT')))")
+          BODY=$(printf '✅ 爬取完成，站点部署约 1~2 分钟后生效：\n\n- 📚 书架：%s/\n- 📖 在线阅读：%s/reader.html?id=%s\n- 📦 打包下载：%s/comics/%s/JM%s.zip\n\n（如 404 请稍等片刻并刷新）' "$PAGES_BASE" "$PAGES_BASE" "$AID" "$PAGES_BASE" "$AID" "$AID")
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "$BODY"
+          gh issue close "$ISSUE_NUMBER" --repo "${{ github.repository }}" || true

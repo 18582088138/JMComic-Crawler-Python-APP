@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0d13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>JMComic 云书架</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<style>
+:root{
+  --bg:#0b0d13; --bg2:#10131c; --card:rgba(255,255,255,.045); --card2:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.09); --txt:#eef1f8; --txt2:#9aa3b8; --txt3:#626c82;
+  --ac1:#7c6cff; --ac2:#4dd0ff; --grad:linear-gradient(135deg,#7c6cff 0%,#4dd0ff 100%);
+  --ok:#34d399; --warn:#fbbf24; --err:#f87171;
+  --r:18px; --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{
+  background:var(--bg);color:var(--txt);min-height:100vh;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
+  padding-bottom:calc(28px + var(--sab));overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(600px 340px at 85% -8%,rgba(124,108,255,.22),transparent 60%),
+    radial-gradient(500px 300px at -10% 18%,rgba(77,208,255,.12),transparent 60%);
+}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px}
+
+/* ---------- 顶栏 ---------- */
+.appbar{
+  position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;
+  padding:calc(12px + var(--sat)) 16px 12px;
+  background:rgba(11,13,19,.75);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--line);
+}
+.logo{width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center;flex:none;
+  box-shadow:0 4px 16px rgba(124,108,255,.4)}
+.logo svg{width:19px;height:19px;fill:#fff}
+.appbar h1{font-size:1.06rem;font-weight:700;letter-spacing:.5px}
+.appbar .sub{font-size:.68rem;color:var(--txt3);margin-top:1px}
+.iconbtn{margin-left:auto;width:36px;height:36px;border-radius:12px;border:1px solid var(--line);
+  background:var(--card);display:grid;place-items:center;cursor:pointer;transition:.2s}
+.iconbtn:active{transform:scale(.92);background:var(--card2)}
+.iconbtn svg{width:18px;height:18px;fill:var(--txt2)}
+
+/* ---------- 卡片 ---------- */
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:18px;margin-top:16px;animation:rise .5s ease both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.card h2{font-size:.95rem;font-weight:700;display:flex;align-items:center;gap:8px}
+.card h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--grad);flex:none}
+.hint{font-size:.75rem;color:var(--txt3);line-height:1.6;margin-top:6px}
+
+/* ---------- 输入区 ---------- */
+.inputbox{position:relative;margin-top:14px}
+.inputbox textarea{
+  width:100%;min-height:52px;resize:none;border-radius:14px;border:1px solid var(--line);
+  background:rgba(0,0,0,.3);color:var(--txt);padding:14px 44px 14px 14px;font-size:.9rem;
+  font-family:inherit;line-height:1.45;outline:none;transition:.2s;
+}
+.inputbox textarea:focus{border-color:var(--ac1);box-shadow:0 0 0 3px rgba(124,108,255,.18)}
+.inputbox textarea::placeholder{color:var(--txt3)}
+.pastebtn{position:absolute;right:8px;top:8px;width:34px;height:34px;border:none;border-radius:10px;
+  background:var(--card2);display:grid;place-items:center;cursor:pointer}
+.pastebtn svg{width:16px;height:16px;fill:var(--txt2)}
+.idchip{
+  display:none;margin-top:10px;padding:8px 12px;border-radius:10px;font-size:.78rem;
+  background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);color:var(--ok);
+  align-items:center;gap:6px;animation:rise .3s ease both;
+}
+.idchip.show{display:inline-flex}
+.idchip.err{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--err)}
+
+.seg{display:flex;gap:6px;margin-top:14px;background:rgba(0,0,0,.3);border:1px solid var(--line);
+  border-radius:13px;padding:4px}
+.seg button{
+  flex:1;border:none;background:transparent;color:var(--txt2);font-size:.78rem;font-weight:600;
+  padding:9px 2px;border-radius:10px;cursor:pointer;transition:.22s;font-family:inherit;white-space:nowrap;
+}
+.seg button.on{background:var(--grad);color:#fff;box-shadow:0 3px 12px rgba(124,108,255,.35)}
+
+.bigbtn{
+  width:100%;margin-top:14px;border:none;border-radius:14px;padding:15px;cursor:pointer;
+  background:var(--grad);color:#fff;font-size:.95rem;font-weight:700;letter-spacing:1px;
+  font-family:inherit;box-shadow:0 6px 20px rgba(124,108,255,.35);transition:.2s;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.bigbtn:active{transform:scale(.97)}
+.bigbtn:disabled{opacity:.5;box-shadow:none}
+.bigbtn.ghost{background:var(--card2);box-shadow:none;border:1px solid var(--line);color:var(--txt);
+  font-weight:600;font-size:.85rem;padding:12px;margin-top:10px}
+
+/* ---------- 任务状态 ---------- */
+#taskCard{display:none}
+.steps{margin-top:14px;display:flex;flex-direction:column;gap:0}
+.step{display:flex;gap:12px;position:relative;padding-bottom:18px}
+.step:last-child{padding-bottom:2px}
+.step::before{content:"";position:absolute;left:10px;top:24px;bottom:2px;width:2px;background:var(--line)}
+.step:last-child::before{display:none}
+.step .ico{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);flex:none;
+  display:grid;place-items:center;background:var(--bg2);z-index:1;font-size:.6rem}
+.step.doing .ico{border-color:var(--ac1);animation:pulse 1.2s infinite}
+.step.doing .ico::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--grad)}
+.step.done .ico{border-color:var(--ok);background:rgba(52,211,153,.15)}
+.step.done .ico::after{content:"✓";color:var(--ok);font-size:.68rem;font-weight:900}
+.step.fail .ico{border-color:var(--err)}
+.step.fail .ico::after{content:"✕";color:var(--err);font-size:.62rem;font-weight:900}
+.step .txt{font-size:.83rem;color:var(--txt2);padding-top:2px;line-height:1.5}
+.step.doing .txt{color:var(--txt);font-weight:600}
+.step .txt small{display:block;color:var(--txt3);font-size:.7rem;font-weight:400;margin-top:2px}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(124,108,255,.4)}50%{box-shadow:0 0 0 6px rgba(124,108,255,0)}}
+.runlink{display:inline-block;margin-top:6px;font-size:.72rem;color:var(--ac2);text-decoration:none}
+.runlink:active{opacity:.6}
+
+/* ---------- 书架 ---------- */
+.shelfhead{display:flex;align-items:baseline;gap:8px;margin:26px 2px 12px}
+.shelfhead h2{font-size:1.05rem;font-weight:800}
+.shelfhead span{font-size:.72rem;color:var(--txt3)}
+.shelfhead button{margin-left:auto;border:none;background:none;color:var(--ac2);font-size:.75rem;cursor:pointer;font-family:inherit}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:480px){.grid{grid-template-columns:repeat(3,1fr)}}
+.book{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+  cursor:pointer;transition:.22s;animation:rise .5s ease both;position:relative;
+}
+.book:active{transform:scale(.96)}
+.cover{position:relative;width:100%;aspect-ratio:3/4;background:#1a1e2a;overflow:hidden}
+.cover img{position:relative;z-index:1;width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .4s}
+.cover img.ok{opacity:1}
+.cover .ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--txt3);font-size:1.6rem}
+.badges{position:absolute;z-index:2;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+.badge{font-size:.6rem;font-weight:700;padding:3px 7px;border-radius:7px;backdrop-filter:blur(8px);
+  background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.15)}
+.badge.zip{color:#7ee7c8;border-color:rgba(52,211,153,.4)}
+.badge.prog{color:#c9beff;border-color:rgba(124,108,255,.45)}
+.binfo{padding:10px 12px 12px}
+.binfo .t{font-size:.8rem;font-weight:700;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden;min-height:2.15em}
+.binfo .m{font-size:.66rem;color:var(--txt3);margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}
+.binfo .m i{font-style:normal}
+.binfo .m i+i::before{content:"·";margin-right:4px}
+.bacts{display:flex;gap:6px;margin-top:10px}
+.bacts a{
+  flex:1;text-align:center;text-decoration:none;font-size:.72rem;font-weight:700;padding:8px 4px;
+  border-radius:10px;transition:.2s;
+}
+.bacts a.read{background:var(--grad);color:#fff}
+.bacts a.dl{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.bacts a:active{transform:scale(.94)}
+
+.empty{text-align:center;padding:44px 20px;color:var(--txt3)}
+.empty .art{font-size:3rem;margin-bottom:12px;filter:grayscale(.3)}
+.empty p{font-size:.8rem;line-height:1.8}
+
+/* ---------- 底部弹层 ---------- */
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:90;
+  opacity:0;pointer-events:none;transition:.25s}
+.mask.show{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:99;max-width:640px;margin:0 auto;
+  background:var(--bg2);border:1px solid var(--line);border-bottom:none;
+  border-radius:22px 22px 0 0;padding:14px 20px calc(20px + var(--sab));
+  transform:translateY(105%);transition:transform .3s cubic-bezier(.32,.72,.35,1);
+  max-height:82vh;overflow-y:auto;
+}
+.sheet.show{transform:none}
+.sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px}
+.sheet h3{font-size:.98rem;font-weight:800;margin-bottom:4px}
+.sheet .sec{margin-top:16px}
+.sheet .sec b{font-size:.8rem;color:var(--txt2);display:block;margin-bottom:8px}
+.sheet input[type=text],.sheet input[type=password],.sheet input[type=number]{
+  width:100%;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.3);
+  color:var(--txt);padding:12px 14px;font-size:.85rem;outline:none;font-family:inherit;
+}
+.sheet input:focus{border-color:var(--ac1)}
+.sheet ol{margin:6px 0 0 18px;font-size:.78rem;color:var(--txt2);line-height:2}
+.sheet a{color:var(--ac2);text-decoration:none}
+.sheet code{background:rgba(124,108,255,.15);color:#c9beff;padding:1px 6px;border-radius:6px;font-size:.72rem}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:calc(40px + var(--sab));transform:translate(-50%,80px);
+  background:rgba(20,24,34,.95);border:1px solid var(--line);color:var(--txt);
+  padding:11px 18px;border-radius:13px;font-size:.8rem;z-index:200;transition:.3s;
+  max-width:86vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.5);pointer-events:none;
+}
+#toast.show{transform:translate(-50%,0)}
+.foot{text-align:center;color:var(--txt3);font-size:.66rem;margin-top:30px;line-height:1.8}
+.sk{border-radius:16px;background:linear-gradient(100deg,rgba(255,255,255,.04) 40%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 60%);
+  background-size:200% 100%;animation:sk 1.4s infinite;aspect-ratio:3/5.2}
+@keyframes sk{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="logo"><svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17.5a2.5 2.5 0 0 1-2.5 2.5H6.5A2.5 2.5 0 0 1 4 19.5v-15zM6.5 4A.5.5 0 0 0 6 4.5V17c.16-.06.33-.1.5-.1H18V4H6.5zM8 6h8v2H8V6z"/></svg></div>
+  <div>
+    <h1>JMComic 云书架</h1>
+    <div class="sub">GitHub Actions · Pages 云端爬取</div>
+  </div>
+  <button class="iconbtn" id="settingsBtn" aria-label="设置">
+    <svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L14.9 3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L6.4 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM12.7 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+  </button>
+</header>
+
+<div class="wrap">
+
+  <!-- 爬取新本子 -->
+  <section class="card" id="submitCard">
+    <h2><span class="dot"></span>爬取新本子</h2>
+    <div class="hint">粘贴 JMComic 本子链接或直接输入车牌号，云端自动下载到书架</div>
+    <div class="inputbox">
+      <textarea id="jmInput" rows="2" placeholder="https://18comic.vip/album/1483616/... 或 1483616"></textarea>
+      <button class="pastebtn" id="pasteBtn" title="粘贴"><svg viewBox="0 0 24 24"><path d="M19 2h-4.2a2.8 2.8 0 0 0-5.6 0H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-7-1a.8.8 0 1 1 0 1.6A.8.8 0 0 1 12 1zM19 20H5V4h2v2h10V4h2v16z"/></svg></button>
+    </div>
+    <div class="idchip" id="idChip"></div>
+    <div class="seg" id="modeSeg">
+      <button data-mode="both" class="on">在线+打包</button>
+      <button data-mode="read">仅在线阅览</button>
+      <button data-mode="zip">仅打包下载</button>
+    </div>
+    <button class="bigbtn" id="submitBtn">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg>
+      开始爬取
+    </button>
+    <div class="hint" style="margin-top:10px">💡 爬取在 GitHub Actions 云端进行，提交后约 1~3 分钟上架，期间可关闭本页</div>
+  </section>
+
+  <!-- 任务状态 -->
+  <section class="card" id="taskCard">
+    <h2><span class="dot"></span>任务进度 <span id="taskId" style="color:var(--ac2);font-size:.8rem"></span></h2>
+    <div class="steps">
+      <div class="step" data-s="dispatch"><div class="ico"></div><div class="txt">提交爬取任务<small id="dispatchSub">触发 GitHub Actions 工作流</small></div></div>
+      <div class="step" data-s="run"><div class="ico"></div><div class="txt">云端下载中<small id="runSub">等待工作流执行…</small><a class="runlink" id="runLink" target="_blank" rel="noopener" style="display:none">查看 Actions 日志 →</a></div></div>
+      <div class="step" data-s="deploy"><div class="ico"></div><div class="txt">站点部署中<small>等待 GitHub Pages 发布（约 1~2 分钟）</small></div></div>
+      <div class="step" data-s="done"><div class="ico"></div><div class="txt">已上架书架</div></div>
+    </div>
+    <button class="bigbtn" id="goReadBtn" style="display:none">📖 立即阅读</button>
+    <button class="bigbtn ghost" id="taskResetBtn">收起进度</button>
+  </section>
+
+  <!-- 书架 -->
+  <div class="shelfhead">
+    <h2>我的书架</h2><span id="shelfCount"></span>
+    <button id="refreshBtn">刷新</button>
+  </div>
+  <div class="grid" id="shelf"></div>
+
+  <div class="foot">
+    数据由 GitHub Actions 爬取并托管于 GitHub Pages<br>
+    书库容量有限，旧本子会被自动清理 · 仅供个人学习使用
+  </div>
+</div>
+
+<!-- 设置弹层 -->
+<div class="mask" id="mask"></div>
+<div class="sheet" id="settingsSheet">
+  <div class="grab"></div>
+  <h3>⚙️ 设置</h3>
+
+  <div class="sec">
+    <b>仓库（自动识别，一般无需修改）</b>
+    <input type="text" id="repoInput" placeholder="owner/repo，例如 18582088138/JMComic-Crawler-Python-APP">
+  </div>
+
+  <div class="sec">
+    <b>GitHub Token（用于一键提交爬取任务，仅存本机）</b>
+    <input type="password" id="tokenInput" placeholder="ghp_... / github_pat_...">
+    <div class="hint">
+      在 GitHub → Settings → Developer settings →
+      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained tokens</a>
+      创建：仅授权本仓库，权限 <code>Actions: Read and write</code> 即可。
+      不填 Token 时，将改用「提 Issue」方式提交任务（需手动点两下）。
+    </div>
+  </div>
+
+  <div class="sec">
+    <b>首次使用检查清单</b>
+    <ol>
+      <li>仓库 Settings → Pages → Source 选 <code>Deploy from a branch</code>，分支 <code>master</code> 目录 <code>/docs</code></li>
+      <li>Settings → Actions → General → Workflow permissions 选 <code>Read and write</code></li>
+      <li>把本页添加到主屏幕，获得 App 体验</li>
+    </ol>
+  </div>
+
+  <button class="bigbtn" id="saveSettingsBtn" style="margin-top:18px">保存设置</button>
+  <button class="bigbtn ghost" id="closeSettingsBtn">关闭</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+/* ================= 工具 ================= */
+var $=function(s){return document.querySelector(s)};
+var toastTimer=null;
+function toast(msg,ms){var t=$('#toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show')},ms||2200);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function relTime(iso){var d=(Date.now()-new Date(iso).getTime())/1000;
+  if(d<60)return'刚刚';if(d<3600)return Math.floor(d/60)+'分钟前';
+  if(d<86400)return Math.floor(d/3600)+'小时前';if(d<86400*30)return Math.floor(d/86400)+'天前';
+  return iso.slice(0,10);}
+function fmtSize(b){if(!b)return'';return b>1048576?(b/1048576).toFixed(1)+'MB':(b/1024).toFixed(0)+'KB'}
+
+/* ================= 设置 ================= */
+var store={
+  get:function(k,d){try{var v=localStorage.getItem('jm_'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set:function(k,v){try{localStorage.setItem('jm_'+k,JSON.stringify(v))}catch(e){}}
+};
+function detectRepo(){
+  var saved=store.get('repo','');if(saved)return saved;
+  var h=location.hostname;
+  if(/\.github\.io$/.test(h)){
+    var owner=h.split('.')[0];
+    var seg=location.pathname.split('/').filter(Boolean);
+    if(seg.length)return owner+'/'+seg[0];
+  }
+  return store.get('repo','');
+}
+
+/* ================= 解析输入 ================= */
+function parseInput(text){
+  text=(text||'').trim();if(!text)return null;
+  if(/^\d+$/.test(text))return text;
+  var m=text.match(/^jm\s*(\d+)$/i);if(m)return m[1];
+  m=text.match(/\/album\/(\d+)/);if(m)return m[1];
+  m=text.match(/\/photo\/(\d+)/);if(m)return m[1];
+  m=text.match(/[?&]id=(\d+)/);if(m)return m[1];
+  m=text.match(/\bjm\s*(\d+)\b/i);if(m)return m[1];
+  return null;
+}
+var input=$('#jmInput'),chip=$('#idChip');
+function refreshChip(){
+  var v=input.value.trim();
+  if(!v){chip.className='idchip';return;}
+  var id=parseInput(v);
+  if(id){chip.className='idchip show';chip.innerHTML='✅ 识别车牌号：<b>JM'+esc(id)+'</b>';}
+  else{chip.className='idchip show err';chip.textContent='⚠️ 无法识别，请输入本子链接或纯数字车牌号';}
+}
+input.addEventListener('input',refreshChip);
+$('#pasteBtn').addEventListener('click',function(){
+  if(!navigator.clipboard||!navigator.clipboard.readText){toast('当前浏览器不支持读取剪贴板，请长按输入框粘贴');input.focus();return;}
+  navigator.clipboard.readText().then(function(t){input.value=t;refreshChip();toast('已粘贴');},function(){toast('读取剪贴板失败，请手动粘贴');});
+});
+
+/* ================= 模式选择 ================= */
+var mode='both';
+$('#modeSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  mode=b.dataset.mode;
+  this.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b)});
+});
+var MODE_LABEL={both:'在线阅览 + 打包下载',read:'仅在线阅览',zip:'仅打包下载'};
+
+/* ================= 任务状态机 ================= */
+var pending=store.get('pending',null); // {id,mode,ts}
+var pollTimer=null;
+function setStep(name,state,sub){
+  var el=document.querySelector('.step[data-s="'+name+'"]');
+  if(!el)return;
+  el.classList.remove('doing','done','fail');
+  if(state)el.classList.add(state);
+  if(sub){var s=el.querySelector('small');if(s)s.textContent=sub;}
+}
+function resetSteps(){
+  ['dispatch','run','deploy','done'].forEach(function(s){setStep(s,null)});
+  $('#runLink').style.display='none';
+}
+function showTask(id){
+  $('#taskCard').style.display='block';
+  $('#taskId').textContent='JM'+id;
+  resetSteps();
+  $('#goReadBtn').style.display='none';
+}
+function startPolling(){
+  stopPolling();
+  pollShelf(); // 立即检查一次（可能已完成）
+  pollTimer=setInterval(function(){
+    if(!pending){stopPolling();return;}
+    if(Date.now()-pending.ts>20*60*1000){ // 20分钟超时
+      setStep('deploy','fail','等待超时，请到 Actions 页面查看任务状态');
+      stopPolling();return;
+    }
+    pollShelf();
+    pollRun();
+  },15000);
+  pollRun();
+}
+function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+function pollShelf(){
+  fetch('data/comics.json?t='+Date.now(),{cache:'no-store'})
+    .then(function(r){return r.ok?r.json():null})
+    .then(function(data){
+      if(!data||!pending)return;
+      var found=(data.comics||[]).some(function(c){return String(c.id)===String(pending.id)});
+      if(found)taskDone();
+    }).catch(function(){});
+}
+function pollRun(){
+  var repo=detectRepo(),token=store.get('token','');
+  if(!repo||!token)return; // 无 token 时仅靠 comics.json 探测
+  fetch('https://api.github.com/repos/'+repo+'/actions/workflows/pages_crawler.yml/runs?per_page=3',{
+    headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}
+  }).then(function(r){return r.ok?r.json():null}).then(function(data){
+    if(!data||!pending)return;
+    var run=(data.workflow_runs||[]).filter(function(x){
+      return new Date(x.created_at).getTime()>=pending.ts-90000;
+    })[0];
+    if(!run)return;
+    var link=$('#runLink');link.href=run.html_url;link.style.display='inline-block';
+    if(run.status==='queued'){setStep('dispatch','done');setStep('run','doing','排队中…');}
+    else if(run.status==='in_progress'){setStep('dispatch','done');setStep('run','doing','正在下载本子…');}
+    else if(run.status==='completed'){
+      if(run.conclusion==='success'){setStep('dispatch','done');setStep('run','done');setStep('deploy','doing');}
+      else{setStep('run','fail','工作流执行失败：'+run.conclusion+'，点击查看日志');stopPolling();}
+    }
+  }).catch(function(){});
+}
+function taskDone(){
+  if(!pending)return;
+  setStep('dispatch','done');setStep('run','done');setStep('deploy','done');setStep('done','done');
+  var btn=$('#goReadBtn');btn.style.display='flex';
+  btn.onclick=function(){location.href='reader.html?id='+encodeURIComponent(pending.id)};
+  toast('🎉 本子已上架！');
+  var finishedId=pending.id;
+  pending=null;store.set('pending',null);stopPolling();
+  loadShelf();
+}
+$('#taskResetBtn').addEventListener('click',function(){
+  pending=null;store.set('pending',null);stopPolling();
+  $('#taskCard').style.display='none';
+});
+
+/* ================= 提交任务 ================= */
+$('#submitBtn').addEventListener('click',function(){
+  var id=parseInput(input.value);
+  if(!id){toast('请先输入有效的本子链接或车牌号');input.focus();return;}
+  var repo=detectRepo();
+  if(!repo){openSettings();toast('请先在设置中填写仓库地址');return;}
+  var token=store.get('token','');
+  if(token){dispatchWorkflow(repo,token,id);}
+  else{openIssueFlow(repo,id);}
+});
+
+function dispatchWorkflow(repo,token,id){
+  var btn=$('#submitBtn');btn.disabled=true;btn.textContent='提交中…';
+  fetch('https://api.github.com/repos/'+repo+'/actions/workflows/pages_crawler.yml/dispatches',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify({ref:'master',inputs:{JM_ID:id,MODE:MODE_LABEL[mode],KEEP_LATEST:10}})
+  }).then(function(r){
+    btn.disabled=false;btn.innerHTML='⚡ 开始爬取';
+    if(r.status===204){
+      pending={id:id,mode:mode,ts:Date.now()};store.set('pending',pending);
+      showTask(id);setStep('dispatch','done');setStep('run','doing','工作流已触发，等待运行…');
+      startPolling();toast('任务已提交 🚀');
+      $('#taskCard').scrollIntoView({behavior:'smooth',block:'nearest'});
+    }else if(r.status===404){
+      toast('触发失败(404)：请检查仓库名与 Token 权限');
+    }else if(r.status===401||r.status===403){
+      toast('Token 无效或权限不足（需要 Actions 读写权限）');
+    }else{
+      toast('触发失败：HTTP '+r.status);
+    }
+  }).catch(function(){btn.disabled=false;btn.innerHTML='⚡ 开始爬取';toast('网络错误，无法连接 GitHub API');});
+}
+
+function openIssueFlow(repo,id){
+  var title='[jm] '+id;
+  var body='mode: '+(mode==='both'?'both':mode)+'\n\n由移动端网页引导创建，爬取完成后本 issue 会自动收到链接并被关闭。';
+  var url='https://github.com/'+repo+'/issues/new?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(body);
+  pending={id:id,mode:mode,ts:Date.now()};store.set('pending',pending);
+  showTask(id);setStep('dispatch','doing','请在打开的页面中点「Create」创建 Issue');
+  startPolling();
+  window.open(url,'_blank');
+  toast('已打开 Issue 创建页，提交后自动开始爬取',3500);
+}
+
+/* ================= 书架 ================= */
+function progressOf(id){
+  var p=store.get('prog_'+id,null);
+  if(!p)return null;
+  return p;
+}
+function renderShelf(comics){
+  var box=$('#shelf');
+  $('#shelfCount').textContent=comics.length?('共 '+comics.length+' 本'):'';
+  if(!comics.length){
+    box.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="art">📚</div>'+
+      '<p>书架空空如也<br>在上方粘贴本子链接，开始你的第一次云端爬取吧</p></div>';
+    return;
+  }
+  box.innerHTML=comics.map(function(c,i){
+    var prog=progressOf(c.id);
+    var badges='';
+    if(c.hasZip)badges+='<span class="badge zip">ZIP</span>';
+    if(prog)badges+='<span class="badge prog">读到 '+(prog.ch)+'章'+(prog.p?(' '+prog.p+'页'):'')+'</span>';
+    var readBtn=c.hasReader!==false?'<a class="read" href="reader.html?id='+encodeURIComponent(c.id)+'">📖 阅读</a>':'';
+    var dlBtn=c.hasZip?'<a class="dl" href="comics/'+encodeURIComponent(c.id)+'/'+encodeURIComponent('JM'+c.id+'.zip')+'">📦 下载</a>':'';
+    return '<div class="book" style="animation-delay:'+(i*0.05)+'s" data-id="'+esc(c.id)+'">'+
+      '<div class="cover"><div class="ph">📖</div>'+
+      (c.cover?'<img loading="lazy" src="'+esc(c.cover)+'?t='+encodeURIComponent(c.updatedAt||'')+'" alt="">':'')+
+      '<div class="badges">'+badges+'</div></div>'+
+      '<div class="binfo"><div class="t">'+esc(c.title)+'</div>'+
+      '<div class="m"><i>'+esc(c.author||'未知')+'</i><i>'+(c.pageCount||0)+'页</i><i>'+relTime(c.updatedAt)+'</i></div>'+
+      '<div class="bacts">'+readBtn+dlBtn+'</div></div></div>';
+  }).join('');
+  box.querySelectorAll('.cover img').forEach(function(img){
+    img.addEventListener('load',function(){img.classList.add('ok')});
+    img.addEventListener('error',function(){img.remove()});
+  });
+  box.querySelectorAll('.book').forEach(function(el){
+    el.addEventListener('click',function(e){
+      if(e.target.closest('a'))return;
+      var c=comics.filter(function(x){return String(x.id)===el.dataset.id})[0];
+      if(c&&c.hasReader!==false)location.href='reader.html?id='+encodeURIComponent(c.id);
+    });
+  });
+}
+function loadShelf(){
+  var box=$('#shelf');
+  box.innerHTML='<div class="sk"></div><div class="sk"></div>';
+  fetch('data/comics.json?t='+Date.now(),{cache:'no-store'})
+    .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+    .then(function(data){renderShelf(data.comics||[])})
+    .catch(function(){
+      box.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="art">🛠️</div>'+
+        '<p>暂时无法读取书架<br>若是首次使用，请先到「设置」完成 Pages 开启步骤<br>之后再点击右上角刷新</p></div>';
+    });
+}
+$('#refreshBtn').addEventListener('click',function(){loadShelf();toast('已刷新');});
+
+/* ================= 设置弹层 ================= */
+var mask=$('#mask'),sheet=$('#settingsSheet');
+function openSettings(){
+  $('#repoInput').value=detectRepo();
+  $('#tokenInput').value=store.get('token','');
+  mask.classList.add('show');sheet.classList.add('show');
+}
+function closeSettings(){mask.classList.remove('show');sheet.classList.remove('show');}
+$('#settingsBtn').addEventListener('click',openSettings);
+$('#closeSettingsBtn').addEventListener('click',closeSettings);
+mask.addEventListener('click',closeSettings);
+$('#saveSettingsBtn').addEventListener('click',function(){
+  store.set('repo',$('#repoInput').value.trim());
+  store.set('token',$('#tokenInput').value.trim());
+  closeSettings();toast('设置已保存（仅存储在本机浏览器）');
+});
+
+/* ================= 启动 ================= */
+loadShelf();
+if(pending){showTask(pending.id);setStep('dispatch','done');setStep('run','doing','恢复任务跟踪…');startPolling();}
+})();
+</script>
+</body>
+</html>

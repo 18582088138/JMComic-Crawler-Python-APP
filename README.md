@@ -223,6 +223,46 @@ jmv 350234 -y
 
 （提示：jmcomic提供了很多下载配置项，大部分的下载需求你都可以尝试寻找相关配置项或插件来实现。）
 
+## 移动端云书架（GitHub Actions + GitHub Pages）
+
+本项目内置了一套「云端漫画书架」：在手机上打开一个网页，粘贴本子链接或车牌号，
+GitHub Actions 会在云端把本子下载好并发布成静态站点，随后即可在手机上**在线阅览**（仿漫画 App 的卷轴/翻页阅读器）或**打包下载 ZIP**。
+
+### 一次性配置（约 1 分钟）
+
+1. **开启 GitHub Pages**：仓库 `Settings` → `Pages` → `Source` 选择 `Deploy from a branch`，
+   分支选 `master`、目录选 `/docs`，保存。之后你的书架地址就是
+   `https://<你的用户名>.github.io/JMComic-Crawler-Python-APP/`
+2. **开放 Actions 写权限**：`Settings` → `Actions` → `General` → `Workflow permissions` 选择 `Read and write permissions`（用于把下载结果推送回仓库）
+3. 用手机浏览器打开书架地址，建议「添加到主屏幕」获得 App 体验（支持 PWA）
+
+### 日常使用
+
+- 在书架页粘贴本子链接（如 `https://18comic.vip/album/1483616/...`）或直接输入车牌号 `1483616`，选择产物模式（在线+打包 / 仅在线 / 仅打包），点击「开始爬取」
+- 提交方式二选一：
+  - **一键提交（推荐）**：在「设置」里填入一个 Fine-grained Token（仅授权本仓库、`Actions: Read and write` 权限），页面会直接触发 Actions 并实时显示进度。Token 只保存在你自己手机的浏览器里
+  - **免 Token**：不填 Token 时会引导你创建一个 `[jm] 车牌号` 的 Issue，工作流会自动处理、回复下载链接并关闭 Issue
+- 也可以在 GitHub 网页手动运行 `移动端爬取 (Pages)` 工作流，参数相同
+- 爬取完成后 1~2 分钟自动上架书架；书架默认只保留最新 10 本（可在工作流参数 `KEEP_LATEST` 调整，超出的旧本子会被自动清理以控制仓库体积）
+
+### 阅读器操作
+
+- **卷轴模式**（默认）：上下滑动连读，单击屏幕唤出/隐藏工具栏，下滑自动隐藏工具栏
+- **翻页模式**：点按左/右两侧翻页、中间唤出工具栏，支持左右滑动手势；可在设置中切换「左翻右 / 右翻左（日漫习惯）」与「适应屏幕 / 适应宽度（长图）」
+- 自动记忆每本阅读进度，书架卡片会显示「读到 X 章 X 页」；支持章节跳转、进度条拖页、ZIP 打包下载
+
+### 实现说明
+
+| 文件 | 作用 |
+| --- | --- |
+| `docs/index.html` | 移动端书架主页（提交任务 + 书架） |
+| `docs/reader.html` | 漫画阅读器（卷轴/翻页） |
+| `.github/workflows/pages_crawler.yml` | 爬取工作流（workflow_dispatch / issue 两种触发） |
+| `usage/workflow_pages_build.py` | 构建脚本：下载本子 → 生成图片/封面/manifest/ZIP/书架索引 |
+| `assets/option/option_pages_build.yml` | 构建用的下载配置 |
+
+如需禁漫账号登录下载受限本子，照旧配置 `JM_USERNAME` / `JM_PASSWORD` 两个 secrets 即可，构建脚本会自动启用登录插件。
+
 ## 项目特点
 
 - **绕过Cloudflare的反爬虫**
