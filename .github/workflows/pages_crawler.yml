@@ -116,9 +116,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python usage/workflow_pages_build.py
 
-      # GITHUB_TOKEN 推送 gh-pages 不会自动触发 Pages 构建（GitHub 限制），需显式请求
+      # GITHUB_TOKEN 推送 gh-pages 不会自动触发 Pages 构建（GitHub 限制），需显式请求；
+      # 失败时也要跑：last_run.json / wishlist.json 是 Contents API 直写 gh-pages 的，同样需要部署
       - name: 触发 Pages 部署
-        if: success()
+        if: always()
         run: |
           curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
