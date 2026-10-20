@@ -187,8 +187,13 @@ def crawl_mangadex(session, target, work_dir, limit):
 # 拷贝漫画（copymanga 第三方 API）
 # ============================================================
 
-CM_APIS = ['https://api.copymanga.org/api/v3', 'https://api.mangacopy.com/api/v3']
-CM_UA = {'User-Agent': 'COPY/2.3.0', 'platform': '1'}
+CM_APIS = [
+    'https://api.copymanga.tv/api/v3',
+    'https://api.mangacopy.com/api/v3',
+    'https://api.copymanga.org/api/v3',
+    'https://api.copymanga.site/api/v3',
+]
+CM_UA = {'User-Agent': 'COPY/2.3.0', 'platform': '1', 'Accept': 'application/json'}
 
 
 def cm_parse_target(text):
@@ -202,20 +207,30 @@ def cm_parse_target(text):
 
 
 def cm_get(session, path, params=None):
-    last_err = None
+    errs = []
     for base in CM_APIS:
         try:
             time.sleep(0.4)
             resp = session.get(base + path, params=params, headers=CM_UA, timeout=30)
-            resp.raise_for_status()
-            body = resp.json()
+            if resp.status_code != 200:
+                errs.append(f'{base} → HTTP {resp.status_code}: {resp.text[:100]!r}')
+                log(errs[-1] + '，尝试下一个域名')
+                continue
+            try:
+                body = resp.json()
+            except ValueError:
+                errs.append(f'{base} → 非JSON响应: {resp.text[:100]!r}')
+                log(errs[-1] + '，尝试下一个域名')
+                continue
             if body.get('code') and body['code'] != 200:
-                raise RuntimeError(f"拷贝API返回 code={body.get('code')}: {body.get('message')}")
+                errs.append(f"{base} → code={body.get('code')}: {body.get('message')}")
+                log(errs[-1] + '，尝试下一个域名')
+                continue
             return body.get('results', body)
         except Exception as e:
-            last_err = e
-            log(f'拷贝API {base} 失败: {e}，尝试下一个域名')
-    raise RuntimeError(f'拷贝漫画API全部不可用: {last_err}')
+            errs.append(f'{base} → {e}')
+            log(errs[-1] + '，尝试下一个域名')
+    raise RuntimeError('拷贝漫画API全部不可用:\n' + '\n'.join(errs))
 
 
 def crawl_copymanga(session, target, work_dir, limit):
@@ -274,25 +289,35 @@ def nh_parse_target(text):
 
 def crawl_nhentai(session, target, work_dir, _limit):
     gid = nh_parse_target(target)
-    resp = session.get(f'https://nhentai.net/g/{gid}/', timeout=30)
-    resp.raise_for_status()
-    html = resp.text
 
-    m = re.search(r'<meta property="og:title" content="([^"]+)"', html)
-    title = m.group(1).strip() if m else f'nhentai {gid}'
-    m = re.search(r'"media_id":\s*"?(\d+)"?', html)
-    if not m:
-        raise RuntimeError('未能从页面解析 media_id（可能被 Cloudflare 拦截）')
-    media_id = m.group(1)
+    # 优先 JSON API（结构稳定，无需解析 HTML）
+    resp = session.get(f'https://nhentai.net/api/gallery/{gid}', timeout=30)
+    if resp.status_code == 200:
+        data = resp.json()
+        media_id = data['media_id']
+        title = (data.get('title') or {}).get('english') or data['title'].get('japanese') or f'nhentai {gid}'
+        artists = [t['name'] for t in data.get('tags', []) if t.get('type') == 'artist']
+        urls = [f'https://i.nhentai.net/galleries/{media_id}/{i}.{NH_EXT.get(p.get("t"), "jpg")}'
+                for i, p in enumerate(data['images']['pages'], 1)]
+    else:
+        log(f'nhentai API 返回 {resp.status_code}，回退 HTML 解析')
+        resp = session.get(f'https://nhentai.net/g/{gid}/', timeout=30)
+        resp.raise_for_status()
+        html = resp.text
+        m = re.search(r'<meta property="og:title" content="([^"]+)"', html)
+        title = m.group(1).strip() if m else f'nhentai {gid}'
+        m = re.search(r'"media_id":\s*"?(\d+)"?', html)
+        if not m:
+            raise RuntimeError(f'未能从页面解析 media_id（可能被 Cloudflare 拦截，HTTP {resp.status_code}）')
+        media_id = m.group(1)
+        pages_block = re.search(r'"pages":\s*\[(.*?)\]', html, re.DOTALL)
+        if not pages_block:
+            raise RuntimeError('未能从页面解析图片列表')
+        types = re.findall(r'\{"t"\s*:\s*"(\w)"', pages_block.group(1))
+        urls = [f'https://i.nhentai.net/galleries/{media_id}/{i}.{NH_EXT.get(t, "jpg")}'
+                for i, t in enumerate(types, 1)]
+        artists = re.findall(r'"artists":\s*\[.*?"name":\s*"([^"]+)"', html)
 
-    pages_block = re.search(r'"pages":\s*\[(.*?)\]', html, re.DOTALL)
-    if not pages_block:
-        raise RuntimeError('未能从页面解析图片列表')
-    types = re.findall(r'\{"t"\s*:\s*"(\w)"', pages_block.group(1))
-    urls = [f'https://i.nhentai.net/galleries/{media_id}/{i}.{NH_EXT.get(t, "jpg")}'
-            for i, t in enumerate(types, 1)]
-
-    artists = re.findall(r'"artists":\s*\[.*?"name":\s*"([^"]+)"', html)
     log(f'nhentai《{title}》: {len(urls)} 页')
     download_chapter_images(session, urls, os.path.join(work_dir, '1'),
                             referer='https://nhentai.net/', delay=0.3)
