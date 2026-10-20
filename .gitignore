@@ -165,3 +165,10 @@ cython_debug/
 .idea/
 .agent
 AGENTS.md
+
+# 云书架：站点数据已迁移到孤立分支管理（data/<site>、gh-pages），
+# 本地 mock 构建会在 docs/ 下重建这些目录，勿提交
+docs/comics/
+docs/data/
+docs/index.json
+build/

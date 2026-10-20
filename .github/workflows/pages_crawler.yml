@@ -1,28 +1,38 @@
-name: 移动端爬取 (Pages)
+name: 云端爬取 (云书架)
 
-# 两种触发方式：
-# 1. workflow_dispatch —— 移动端网页通过 GitHub API 触发（需要 Token），也可在 Actions 页面手动运行
-# 2. issues —— 移动端网页引导用户创建标题为 `[jm] 本子ID` 的 issue 触发（无需 Token）
+# 三种触发方式：
+# 1. workflow_dispatch —— 网页通过 GitHub API 触发（需要 Token），也可在 Actions 页面手动运行
+# 2. issues —— 网页引导用户创建标题为 `[jm] <目标>` 的 issue 触发（无需 Token）
+#
+# 爬取产物推送到该站孤立分支 data/<site>（单 commit force-push），
+# 再装配进 gh-pages（单 commit force-push）由 Pages 托管，master 历史不再积累图片。
+
 on:
   workflow_dispatch:
     inputs:
-      JM_ID:
+      TARGET:
         type: string
-        description: '链接或ID（JM 车号/链接；内测平台填对应漫画链接或ID）'
+        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）'
         required: true
 
       SOURCE:
-        description: '平台（内测功能，其他平台爬取为实验性）'
+        description: '平台（auto = 按链接自动识别）'
         type: choice
-        default: 'JMComic'
+        default: 'auto'
         options:
-          - 'JMComic'
-          - 'MangaDex（内测）'
-          - 'nhentai（内测）'
+          - 'auto'
+          - 'jmcomic'
+          - 'mangadex'
+          - 'nhentai'
+          - 'manhuagui'
+          - 'dmzj'
+          - 'wnacg'
+          - 'ehentai'
+          - 'bika'
 
-      BETA_LIMIT:
+      LIMIT:
         type: number
-        description: '内测平台爬取章节数（仅 SOURCE 非 JMComic 时生效，最多 10）'
+        description: '爬取章节数（多章节站点生效，最多 10；nhentai/wnacg/e-hentai 为整本单章忽略此项）'
         default: 3
 
       MODE:
@@ -36,12 +46,12 @@ on:
 
       KEEP_LATEST:
         type: number
-        description: '书库最多保留几本（超出自动清理最旧的）'
+        description: '该站书库最多保留几本（超出自动清理最旧的）'
         default: 10
 
       CLIENT_IMPL:
         type: string
-        description: '客户端类型（client.impl），下载失败时可尝试填入 api 或 html 重试'
+        description: 'JMComic 客户端类型（client.impl），JM 下载失败时可尝试填入 api 或 html 重试'
         default: ''
         required: false
 
@@ -49,7 +59,7 @@ on:
     types: [ opened, reopened ]
 
 permissions:
-  contents: write # 推送 docs/ 站点数据
+  contents: write # 推送 data/<site> 与 gh-pages 分支、Contents API 写状态文件
   issues: write   # 在 issue 下回复下载链接
 
 concurrency:
@@ -62,21 +72,21 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[jm]')
     runs-on: ubuntu-latest
     env:
-      JM_PAGES_INPUT: ${{ github.event.inputs.JM_ID || github.event.issue.title }}
+      JM_PAGES_INPUT: ${{ github.event.inputs.TARGET || github.event.issue.title }}
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
-      JM_PAGES_SOURCE_INPUT: ${{ github.event.inputs.SOURCE }}
-      JM_PAGES_LIMIT: ${{ github.event.inputs.BETA_LIMIT || 3 }}
+      JM_PAGES_SOURCE: ${{ github.event.inputs.SOURCE || 'auto' }}
+      JM_PAGES_LIMIT: ${{ github.event.inputs.LIMIT || 3 }}
       JM_PAGES_KEEP: ${{ github.event.inputs.KEEP_LATEST || 10 }}
       JM_PAGES_ISSUE_BODY: ${{ github.event.issue.body }}
       CLIENT_IMPL: ${{ github.event.inputs.CLIENT_IMPL }}
       JM_USERNAME: ${{ secrets.JM_USERNAME }}
       JM_PASSWORD: ${{ secrets.JM_PASSWORD }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          # 留一定历史深度，便于并发提交时 rebase
-          fetch-depth: 50
+          fetch-depth: 1
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -89,7 +99,7 @@ jobs:
           pip install -e ./
           pip install psutil # usage_log 插件依赖
 
-      - name: 解析产物模式与平台
+      - name: 解析产物模式
         run: |
           case "$JM_PAGES_MODE_INPUT" in
             *仅在线阅览*) mode=read ;;
@@ -97,38 +107,17 @@ jobs:
             *) mode=both ;;
           esac
           echo "JM_PAGES_MODE=$mode" >> $GITHUB_ENV
-          case "$JM_PAGES_SOURCE_INPUT" in
-            *MangaDex*) source=mangadex ;;
-            *拷贝漫画*) source=copymanga ;;
-            *nhentai*) source=nhentai ;;
-            *) source=jm ;;
-          esac
-          echo "JM_PAGES_SOURCE=$source" >> $GITHUB_ENV
-          echo "产物模式: $mode，平台: $source"
+          echo "产物模式: $mode，平台: $JM_PAGES_SOURCE"
 
-      - name: 下载本子并生成站点数据
+      - name: 爬取并发布站点数据（data 分支 + gh-pages 装配）
         id: build
-        run: |
-          python usage/workflow_pages_build.py
-
-      - name: 提交并推送站点数据
-        id: push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/
-          if git diff --cached --quiet; then
-            echo "站点数据无变更，跳过提交"
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          git commit -m "pages: 更新移动端书库 ($(date -u '+%Y-%m-%d %H:%M UTC')) [skip ci]"
-          git pull --rebase --autostash origin master || { git rebase --abort; exit 1; }
-          git push origin HEAD:master
-          echo "changed=true" >> $GITHUB_OUTPUT
+          python usage/workflow_pages_build.py
 
       - name: 回复 issue（提供访问链接）
-        if: github.event_name == 'issues' && steps.push.outputs.changed == 'true'
+        if: github.event_name == 'issues' && success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -138,3 +127,11 @@ jobs:
           BODY=$(printf '✅ 爬取完成，站点部署约 1~2 分钟后生效：\n\n- 📚 书架：%s/\n- 📖 在线阅读：%s/reader.html?id=%s\n- 📦 打包下载：%s/comics/%s/\n\n（如 404 请稍等片刻并刷新）' "$PAGES_BASE" "$PAGES_BASE" "$AID" "$PAGES_BASE" "$AID")
           gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "$BODY"
           gh issue close "$ISSUE_NUMBER" --repo "${{ github.repository }}" || true
+
+      - name: 回复 issue（失败可见性）
+        if: github.event_name == 'issues' && failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body '❌ 爬取失败：请查看本仓库 Actions 日志确认原因；若是未支持的站点，已自动加入设置页「愿望清单」。' || true

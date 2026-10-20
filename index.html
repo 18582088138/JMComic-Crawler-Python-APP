@@ -3,21 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JMComic 云书架 - 正在跳转…</title>
+<title>云书架 - 说明</title>
 <!--
-  兼容页：当 GitHub Pages 源配置为仓库根目录时，本页会被作为站点首页，
-  自动跳转到 docs/ 下的移动端云书架 GUI。
-  推荐配置：Settings → Pages → Source = master /docs（配置后本页不再生效）。
+  兼容页：Pages 源已切换为 gh-pages 分支（根目录），本页正常情况下不会被访问到。
+  若你看到了本页，说明 Pages 源被配成了 master 根目录——请改为 gh-pages /(root)。
 -->
-<meta http-equiv="refresh" content="0; url=docs/">
-<script>location.replace('docs/' + location.search + location.hash);</script>
 <style>
   body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0d13;color:#9aa3b8;
-       font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:.9rem}
-  a{color:#4dd0ff}
+       font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:.9rem;line-height:2}
+  code{background:rgba(124,108,255,.15);color:#c9beff;padding:1px 6px;border-radius:6px}
 </style>
 </head>
 <body>
-  <p>正在进入 JMComic 云书架… <a href="docs/">点击直达</a></p>
+  <p>云书架站点数据已迁移到 <code>gh-pages</code> 分支托管。<br>
+  请将 Pages 源设置为 <code>Deploy from a branch → gh-pages /(root)</code>。</p>
 </body>
 </html>

@@ -1,25 +1,26 @@
 """
-GitHub Pages 移动端站点构建脚本
+云书架构建主入口（GitHub Actions + GitHub Pages 多平台云书架）
 
-配合 .github/workflows/pages_crawler.yml 使用，整体流程：
-    移动端网页（GitHub Pages）提交本子链接/ID
-    → 触发 GitHub Actions
-    → 本脚本下载本子并生成静态站点数据（图片/封面/manifest/zip/书架索引）
-    → Actions 把 docs/ 推送回仓库
-    → 移动端网页即可在线阅览或打包下载
+整体流程：
+    网页/手动/ Issue 提交目标（任意已支持站点的链接或ID）
+    → 本脚本自动识别站点 → 对应爬虫下载 → 生成站点数据
+    → 推送到该站孤立分支 data/<site>（单 commit force-push，历史不膨胀）
+    → 重新装配 gh-pages（前端 + 全站数据聚合）→ Pages 自动部署
 
 环境变量输入：
-    JM_PAGES_INPUT      本子链接或ID（必填），支持：
-                        1483616 / JM1483616 / https://18comic.vip/album/1483616/...
-    JM_PAGES_MODE       产物模式：both（默认，在线阅览+打包下载）/ read（仅在线阅览）/ zip（仅打包下载）
-    JM_PAGES_KEEP       书库最多保留几本，超出自动清理最旧的（默认 10）
+    JM_PAGES_INPUT      目标链接或ID（必填），任意已支持站点；纯数字默认 JMComic 车号
+    JM_PAGES_SOURCE     平台：auto（默认，自动识别）或注册 key（jmcomic/mangadex/...）
+    JM_PAGES_MODE       产物模式：both（默认）/ read / zip
+    JM_PAGES_KEEP       每站书库最多保留几本（默认 10）
+    JM_PAGES_LIMIT      章节数上限（多章节站点生效，默认 3，单章站点忽略）
+    JM_PAGES_ISSUE_BODY issue 触发时传入正文，支持 mode:/keep:/source:/limit: 覆盖
+    JM_PAGES_MOCK       置 1 时不联网，生成模拟图片并写入 JM_PAGES_DOCS_DIR（本地调试用）
+    JM_PAGES_DOCS_DIR   mock 模式的站点目录（默认 ./docs）
+    JM_PAGES_PUBLISH    置 0 时只构建不推分支（本地验证构建产物）
     JM_PAGES_RAW_DIR    原始下载目录（默认 ./build/pages_raw）
-    JM_PAGES_DOCS_DIR   站点目录（默认 ./docs）
-    JM_PAGES_ISSUE_BODY issue 触发时传入 issue 正文，可在正文中用 `mode: zip` / `keep: 5` 覆盖配置
-    CLIENT_IMPL         客户端类型 api/html，下载失败时可切换
-    JM_USERNAME         禁漫账号（可选，secrets）
-    JM_PASSWORD         禁漫密码（可选，secrets）
-    JM_PAGES_MOCK       置 1 时不联网，生成模拟图片用于本地调试站点构建流程
+    CLIENT_IMPL         JMComic 客户端类型 api/html，下载失败时可切换
+    JM_USERNAME/JM_PASSWORD  禁漫账号（可选，secrets）
+    GITHUB_TOKEN        工作流注入，用于写 data/last_run.json 与 wishlist
 """
 import json
 import os
@@ -27,10 +28,18 @@ import re
 import shutil
 import sys
 import time
-import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OPTION_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, '../assets/option/option_pages_build.yml'))
+REPO_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
+sys.path.insert(0, SCRIPT_DIR)
+
+import branch_store  # noqa: E402
+import site_builder  # noqa: E402
+from crawlers import registry  # noqa: E402
+from crawlers.base import log  # noqa: E402
+from crawlers.generic import GenericCrawlFailed  # noqa: E402
+
+LEGACY_SOURCE = {'jm': 'jmcomic'}
 
 
 def env(name, default=''):
@@ -40,37 +49,7 @@ def env(name, default=''):
     return str(value).strip()
 
 
-def log(msg):
-    print(f'[pages-build] {msg}', flush=True)
-
-
-def parse_album_id(text: str) -> str:
-    """从用户输入中解析本子ID，支持纯数字、JM前缀、album/photo链接、?id= 参数"""
-    text = (text or '').strip()
-    if not text:
-        raise ValueError('输入为空，无法解析本子ID')
-
-    if text.isdigit():
-        return text
-
-    m = re.fullmatch(r'(?i)jm\s*(\d+)', text)
-    if m:
-        return m.group(1)
-
-    for pattern in (r'/album/(\d+)', r'/photo/(\d+)', r'[?&]id=(\d+)',
-                    r'(?i)\[jm\]\s*(\d+)', r'(?i)\bjm\s*[:：]?\s*(\d+)\b',
-                    r'\b(\d{3,})\b'):
-        m = re.search(pattern, text)
-        if m:
-            return m.group(1)
-
-    # 兜底交给 jmcomic 的解析器（处理更多链接形态）
-    from jmcomic import JmcomicText
-    return JmcomicText.parse_to_jm_id(text)
-
-
-def parse_issue_body_overrides(body: str):
-    """从 issue 正文中解析可选覆盖项：mode / keep / source / limit"""
+def parse_issue_body_overrides(body):
     overrides = {}
     if not body:
         return overrides
@@ -80,86 +59,33 @@ def parse_issue_body_overrides(body: str):
     m = re.search(r'(?im)^\s*keep\s*[:：]\s*(\d+)\s*$', body)
     if m:
         overrides['keep'] = int(m.group(1))
-    m = re.search(r'(?im)^\s*source\s*[:：]\s*(jm|mangadex|copymanga|nhentai)\s*$', body)
+    m = re.search(r'(?im)^\s*source\s*[:：]\s*(\w+)\s*$', body)
     if m:
-        overrides['source'] = m.group(1).lower()
+        overrides['source'] = normalize_source(m.group(1))
     m = re.search(r'(?im)^\s*limit\s*[:：]\s*(\d+)\s*$', body)
     if m:
         overrides['limit'] = int(m.group(1))
     return overrides
 
 
-def strip_html(text: str) -> str:
-    return re.sub(r'<[^>]+>', '', text or '').strip()
+def normalize_source(source):
+    source = (source or 'auto').strip().lower()
+    return LEGACY_SOURCE.get(source, source)
 
 
-def natural_key(name: str):
-    return [int(s) if s.isdigit() else s.lower() for s in re.split(r'(\d+)', name)]
-
-
-# ============================================================
-# 1. 下载本子（或 mock）
-# ============================================================
-
-def crawl_album(aid: str, impl: str):
-    """联网下载本子，返回 (album_meta, raw_dir)"""
-    from jmcomic import create_option
-
-    os.environ.setdefault('JM_PAGES_RAW_DIR', default_raw_dir())
-
-    option = create_option(OPTION_FILE)
-
-    if impl in ('api', 'html'):
-        option.client.impl = impl
-
-    username, password = env('JM_USERNAME'), env('JM_PASSWORD')
-    if username and password:
-        option.plugins.setdefault('after_init', []).append({
-            'plugin': 'login',
-            'kwargs': {'username': username, 'password': password},
-        })
-        log('已启用登录插件')
-
-    log(f'开始下载本子: JM{aid}')
-    from jmcomic import download_album
-    album, _dler = download_album(aid, option)
-
-    raw_dir = option.dir_rule.decide_album_root_dir(album)
-    log(f'下载完成: 《{album.name}》，原始目录: {raw_dir}')
-    return album_to_meta(album), raw_dir
-
-
-def album_to_meta(album) -> dict:
-    """把 JmAlbumDetail 转成构建用的元数据 dict"""
-    chapters = []
-    for pid, pindex, pname in album.episode_list:
-        chapters.append({
-            'photo_id': str(pid),
-            'dir_name': str(pindex),  # dir_rule 为 Bd_Pindex，章节目录名即 Pindex
-            'title': str(pname).strip(),
-        })
-    return {
-        'id': str(album.album_id),
-        'title': album.name,
-        'authors': list(album.authors),
-        'tags': [str(t) for t in album.tags],
-        'description': strip_html(getattr(album, 'description', '')),
-        'chapters': chapters,
-    }
-
-
-def default_raw_dir():
-    return os.path.abspath(env('JM_PAGES_RAW_DIR', './build/pages_raw'))
-
-
-def mock_download(aid: str):
+def mock_crawl(source, target, work_dir, limit):
     """本地调试用：不联网，生成模拟章节图片"""
     from PIL import Image, ImageDraw
 
-    raw_dir = default_raw_dir()
+    crawler = registry.get_crawler(source) if source != 'auto' else registry.get_crawler('jmcomic')
+    aid = re.sub(r'\W+', '', target) or 'mock'
+    if crawler.site == 'jmcomic':
+        aid = re.sub(r'\D', '', aid) or '9999999'
+
     meta = {
-        'id': aid,
-        'title': f'模拟本子 JM{aid}',
+        'id': f'{crawler.id_prefix}{aid}',
+        'site': crawler.site,
+        'title': f'模拟本子 {crawler.id_prefix}{aid}',
         'authors': ['mock-author'],
         'tags': ['mock', '测试'],
         'description': '本地 mock 数据，仅用于调试站点构建流程',
@@ -170,7 +96,7 @@ def mock_download(aid: str):
     }
     colors = [(94, 84, 255), (0, 180, 216), (255, 121, 63), (46, 196, 182)]
     for ch in meta['chapters']:
-        ch_dir = os.path.join(raw_dir, ch['dir_name'])
+        ch_dir = os.path.join(work_dir, ch['dir_name'])
         os.makedirs(ch_dir, exist_ok=True)
         for i in range(1, 7):
             w, h = 800, 1400 if i % 3 else 2400
@@ -178,230 +104,66 @@ def mock_download(aid: str):
             img = Image.new('RGB', (w, h), color)
             d = ImageDraw.Draw(img)
             d.rectangle([20, 20, w - 20, h - 20], outline=(255, 255, 255), width=6)
-            d.text((60, 60), f"JM{aid} ch{ch['dir_name']} p{i}", fill=(255, 255, 255))
+            d.text((60, 60), f"{meta['id']} ch{ch['dir_name']} p{i}", fill=(255, 255, 255))
             img.save(os.path.join(ch_dir, f'{i:05d}.jpg'), quality=88)
-    log(f'mock 数据生成完毕: {raw_dir}')
-    return meta, raw_dir
+    log(f'mock 数据生成完毕: {work_dir}')
+    return meta, work_dir, crawler
 
 
-# ============================================================
-# 2. 生成站点数据
-# ============================================================
-
-def list_chapter_images(raw_dir: str, dir_name: str):
-    ch_dir = os.path.join(raw_dir, dir_name)
-    if not os.path.isdir(ch_dir):
-        return []
-    files = [f for f in os.listdir(ch_dir) if os.path.isfile(os.path.join(ch_dir, f))]
-    files.sort(key=natural_key)
-    return [os.path.join(ch_dir, f) for f in files]
-
-
-def build_cover(src_image: str, dest: str, max_width=480, quality=85):
-    from PIL import Image
-    with Image.open(src_image) as img:
-        if img.mode not in ('RGB', 'L'):
-            img = img.convert('RGB')
-        if img.width > max_width:
-            img = img.resize((max_width, int(img.height * max_width / img.width)), Image.LANCZOS)
-        img.save(dest, 'JPEG', quality=quality, optimize=True)
-
-
-def make_zip(raw_dir: str, meta: dict, zip_path: str):
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_STORED) as zf:
-        for seq, ch in enumerate(meta['chapters'], 1):
-            title = re.sub(r'[\\/:*?"<>|]', '_', ch['title'])[:60].strip()
-            folder = f'{seq:02d}_{title}' if title else f'{seq:02d}'
-            for img_path in list_chapter_images(raw_dir, ch['dir_name']):
-                zf.write(img_path, f'JM{meta["id"]}/{folder}/{os.path.basename(img_path)}')
-
-
-def dir_size(path: str) -> int:
-    total = 0
-    for root, _dirs, files in os.walk(path):
-        for f in files:
-            total += os.path.getsize(os.path.join(root, f))
-    return total
-
-
-def build_site(meta: dict, raw_dir: str, docs_dir: str, mode: str) -> dict:
-    """把原始下载产物整理成站点数据，返回书架索引条目"""
-    aid = meta['id']
-    has_read = mode in ('both', 'read')
-    has_zip = mode in ('both', 'zip')
-
-    comic_dir = os.path.join(docs_dir, 'comics', aid)
-    if os.path.isdir(comic_dir):
-        shutil.rmtree(comic_dir)
-    os.makedirs(comic_dir)
-
-    manifest = {
-        'id': aid,
-        'title': meta['title'],
-        'author': meta['authors'][0] if meta['authors'] else '未知',
-        'authors': meta['authors'],
-        'tags': meta['tags'],
-        'description': meta['description'],
-        'updatedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        'hasReader': has_read,
-        'hasZip': False,
-        'zip': None,
-        'pageCount': 0,
-        'chapterCount': len(meta['chapters']),
-        'chapters': [],
-    }
-
-    first_image = None
-    for seq, ch in enumerate(meta['chapters'], 1):
-        images = list_chapter_images(raw_dir, ch['dir_name'])
-        if not images:
-            log(f'警告: 章节 {ch["dir_name"]} 没有图片，跳过')
-            continue
-        if first_image is None:
-            first_image = images[0]
-
-        page_entries = []
-        if has_read:
-            dest_dir = os.path.join(comic_dir, 'images', str(seq))
-            os.makedirs(dest_dir)
-            for i, src in enumerate(images, 1):
-                suffix = os.path.splitext(src)[1].lower() or '.jpg'
-                dest_name = f'{i:03d}{suffix}'
-                shutil.copy2(src, os.path.join(dest_dir, dest_name))
-                page_entries.append(f'images/{seq}/{dest_name}')
-
-        manifest['chapters'].append({
-            'index': seq,
-            'photoId': ch['photo_id'],
-            'title': ch['title'],
-            'pageCount': len(images),
-            'pages': page_entries,
-        })
-        manifest['pageCount'] += len(images)
-
-    if first_image is None:
-        raise RuntimeError('没有下载到任何图片，无法生成站点数据')
-
-    build_cover(first_image, os.path.join(comic_dir, 'cover.jpg'))
-
-    if has_zip:
-        # JM 本子沿用 JM<id>.zip 命名；内测平台 id 已带前缀，直接 <id>.zip
-        zip_name = f'JM{aid}.zip' if aid.isdigit() else f'{aid}.zip'
-        make_zip(raw_dir, meta, os.path.join(comic_dir, zip_name))
-        manifest['hasZip'] = True
-        manifest['zip'] = zip_name
-
-    manifest['sizeBytes'] = dir_size(comic_dir)
-
-    with open(os.path.join(comic_dir, 'manifest.json'), 'w', encoding='utf-8') as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-
-    entry = {
-        'id': aid,
-        'title': manifest['title'],
-        'author': manifest['author'],
-        'pageCount': manifest['pageCount'],
-        'chapterCount': manifest['chapterCount'],
-        'cover': f'comics/{aid}/cover.jpg',
-        'hasReader': has_read,
-        'hasZip': manifest['hasZip'],
-        'zipName': manifest['zip'],
-        'updatedAt': manifest['updatedAt'],
-        'sizeBytes': manifest['sizeBytes'],
-    }
-    update_index(docs_dir, entry)
-    log(f'站点数据生成完毕: 《{meta["title"]}》 共 {manifest["pageCount"]} 页 / '
-        f'{manifest["chapterCount"]} 章 / {manifest["sizeBytes"] / 1024 / 1024:.1f}MB')
-    return entry
-
-
-def index_path(docs_dir: str) -> str:
-    return os.path.join(docs_dir, 'data', 'comics.json')
-
-
-def update_index(docs_dir: str, entry: dict):
-    os.makedirs(os.path.join(docs_dir, 'data'), exist_ok=True)
-    data = {'updatedAt': '', 'comics': []}
-    path = index_path(docs_dir)
-    if os.path.isfile(path):
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    comics = [c for c in data.get('comics', []) if c.get('id') != entry['id']]
-    comics.insert(0, entry)
-    data['comics'] = comics
-    data['updatedAt'] = entry['updatedAt']
-
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def apply_retention(docs_dir: str, keep: int, protect_id: str):
-    """书库最多保留 keep 本，删除最旧的本子目录（绝不删除本次构建的本子）"""
-    path = index_path(docs_dir)
-    if not os.path.isfile(path) or keep <= 0:
-        return
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    comics = data.get('comics', [])
-    if len(comics) <= keep:
-        return
-
-    kept, removed = comics[:keep], comics[keep:]
-    removed = [c for c in removed if c.get('id') != protect_id]
-    if len(kept) + len(removed) != len(comics):
-        # protect_id 落在保留区之外，把它保回来
-        for c in comics:
-            if c.get('id') == protect_id and c not in kept:
-                kept.append(c)
-                break
-    if not removed:
-        return
-
-    for c in removed:
-        cid = c.get('id')
-        if not cid or not re.fullmatch(r'\w+', str(cid)):
-            continue
-        target = os.path.join(docs_dir, 'comics', str(cid))
-        if os.path.isdir(target):
-            shutil.rmtree(target)
-            log(f'清理旧本子: JM{cid}《{c.get("title", "")}》')
-
-    data['comics'] = kept
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def write_summary(entry: dict):
+def write_summary(entry):
     summary_file = env('GITHUB_STEP_SUMMARY')
     if not summary_file:
         return
     lines = [
         '## ✅ 本子爬取完成',
         '',
-        f'- 车号：**JM{entry["id"]}**',
+        f'- 平台：**{entry.get("site", "?")}**',
+        f'- 书架ID：**{entry["id"]}**',
         f'- 标题：《{entry["title"]}》',
         f'- 作者：{entry["author"]}',
         f'- 规模：{entry["pageCount"]} 页 / {entry["chapterCount"]} 章 / {entry["sizeBytes"] / 1024 / 1024:.1f}MB',
         f'- 在线阅览：{"✅" if entry["hasReader"] else "❌"}　打包下载：{"✅" if entry["hasZip"] else "❌"}',
         '',
-        '> 站点数据已提交到 docs/，GitHub Pages 部署完成后即可在移动端访问。',
+        '> 站点数据已推送到孤立分支并装配 gh-pages，GitHub Pages 部署完成后即可访问。',
     ]
     with open(summary_file, 'a', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
 
 
+def write_outputs(entry, crawler_site):
+    output_file = env('GITHUB_OUTPUT')
+    if output_file:
+        with open(output_file, 'a', encoding='utf-8') as f:
+            f.write(f'shelf_id={entry["id"]}\n')
+            f.write(f'site={crawler_site}\n')
+
+
+def report_status(status, target, source, **extra):
+    obj = {'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+           'status': status, 'target': target[:200], 'source': source,
+           'run_url': f"https://github.com/{env('GITHUB_REPOSITORY')}/actions/runs/{env('GITHUB_RUN_ID')}"
+                      if env('GITHUB_REPOSITORY') and env('GITHUB_RUN_ID') else ''}
+    obj.update(extra)
+    branch_store.write_last_run(obj)
+
+
+def cleanup_raw(raw_dir):
+    if raw_dir and os.path.isdir(raw_dir) and os.path.abspath(raw_dir).startswith(os.path.abspath('./build')):
+        shutil.rmtree(raw_dir, ignore_errors=True)
+
+
 def main():
     raw_input = env('JM_PAGES_INPUT')
+    if not raw_input:
+        raise ValueError('JM_PAGES_INPUT 为空')
+    # issue 触发时 INPUT 是标题（可能带 [jm] 前缀），先剥离
+    raw_input = re.sub(r'^\s*\[jm\]\s*', '', raw_input, flags=re.IGNORECASE).strip()
+
     mode = env('JM_PAGES_MODE', 'both').lower()
     if mode not in ('both', 'read', 'zip'):
         mode = 'both'
     keep = int(env('JM_PAGES_KEEP', '10') or '10')
-    source = env('JM_PAGES_SOURCE', 'jm').lower()
+    source = normalize_source(env('JM_PAGES_SOURCE', 'auto'))
     limit = int(env('JM_PAGES_LIMIT', '3') or '3')
 
     overrides = parse_issue_body_overrides(env('JM_PAGES_ISSUE_BODY'))
@@ -410,42 +172,73 @@ def main():
     source = overrides.get('source', source)
     limit = overrides.get('limit', limit)
 
-    docs_dir = os.path.abspath(env('JM_PAGES_DOCS_DIR', './docs'))
-    impl = env('CLIENT_IMPL')
+    raw_dir = os.path.abspath(env('JM_PAGES_RAW_DIR', './build/pages_raw'))
+    mock = env('JM_PAGES_MOCK') == '1'
+    publish = env('JM_PAGES_PUBLISH', '1') != '0'
 
-    if source != 'jm':
-        # issue 触发时 INPUT 是标题（带 [jm] 前缀），先剥离
-        beta_target = re.sub(r'^\s*\[jm\]\s*', '', raw_input, flags=re.IGNORECASE).strip()
-        log(f'内测爬取: source={source}，目标: {beta_target}，章节数: {limit}，模式: {mode}')
-        sys.path.insert(0, SCRIPT_DIR)
-        from beta_crawler import crawl
-        meta, raw_dir = crawl(source, beta_target, default_raw_dir(), limit)
+    # ---------- mock：本地构建调试，不碰分支 ----------
+    if mock:
+        docs_dir = os.path.abspath(env('JM_PAGES_DOCS_DIR', './docs'))
+        site_dir = docs_dir  # 兼容旧布局：docs/comics + docs/data/comics.json
+        meta, raw_dir, crawler = mock_crawl(source, raw_input, raw_dir, limit)
+        entry = site_builder.build_site(meta, raw_dir, site_dir, mode)
+        site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
+        # 旧布局兼容：index.json 落到 data/comics.json
+        os.makedirs(os.path.join(docs_dir, 'data'), exist_ok=True)
+        idx = site_builder.read_index(site_dir)
+        with open(os.path.join(docs_dir, 'data', 'comics.json'), 'w', encoding='utf-8') as f:
+            json.dump({'updatedAt': idx['updatedAt'], 'sites': {crawler.site: len(idx['comics'])},
+                       'comics': idx['comics']}, f, ensure_ascii=False, indent=2)
+        cleanup_raw(raw_dir)
+        write_outputs(entry, crawler.site)
+        return
+
+    # ---------- 真实爬取 ----------
+    try:
+        meta, raw_dir_actual, crawler = registry.crawl(source, raw_input, raw_dir, limit)
+    except GenericCrawlFailed as e:
+        log(f'通用兜底爬取失败: {e}')
+        branch_store.append_wishlist(e.url, e.domain, str(e)[:300])
+        report_status('failed', raw_input, 'generic', error=str(e)[:500], wishlisted=e.domain)
+        cleanup_raw(raw_dir)
+        raise SystemExit(1)
+    except Exception as e:
+        report_status('failed', raw_input, source, error=f'{type(e).__name__}: {e}'[:500])
+        cleanup_raw(raw_dir)
+        raise
+
+    site = meta.get('site') or crawler.site
+    log(f'平台: {site}，目标: {raw_input[:80]}，模式: {mode}，保留: {keep}')
+
+    if publish:
+        # 构建产物直接落在 data/<site> 分支的 worktree 里
+        site_dir = os.path.join(REPO_DIR, 'build', 'site_worktree')
+        branch_store.open_branch_worktree(REPO_DIR, f'data/{site}', site_dir)
+        try:
+            entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
+            site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
+            docs_dir = os.path.join(REPO_DIR, 'docs')
+            branch_store.publish(REPO_DIR, site, site_dir, docs_dir, push=True,
+                                 message=f'data: [{site}] +{entry["id"]}')
+        finally:
+            branch_store.close_worktree(REPO_DIR, site_dir)
     else:
-        aid = parse_album_id(raw_input)
-        log(f'解析车号: JM{aid}，模式: {mode}，保留: {keep}')
-        if env('JM_PAGES_MOCK') == '1':
-            meta, raw_dir = mock_download(aid)
-        else:
-            meta, raw_dir = crawl_album(aid, impl)
+        site_dir = os.path.join(REPO_DIR, 'build', 'site_out')
+        entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
+        site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
+        log('JM_PAGES_PUBLISH=0，仅构建未推送')
 
-    entry = build_site(meta, raw_dir, docs_dir, mode)
-    apply_retention(docs_dir, keep, protect_id=meta['id'])
     write_summary(entry)
-
-    # 输出最终书架ID，供工作流回复 issue 时拼链接
-    output_file = env('GITHUB_OUTPUT')
-    if output_file:
-        with open(output_file, 'a', encoding='utf-8') as f:
-            f.write(f'shelf_id={entry["id"]}\n')
-
-    # 清理原始下载目录，避免被误提交
-    if os.path.isdir(raw_dir) and os.path.abspath(raw_dir).startswith(os.path.abspath('./build')):
-        shutil.rmtree(raw_dir, ignore_errors=True)
+    write_outputs(entry, site)
+    report_status('success', raw_input, site, shelf_id=entry['id'], title=entry['title'])
+    cleanup_raw(raw_dir_actual)
 
 
 if __name__ == '__main__':
     try:
         main()
+    except SystemExit:
+        raise
     except Exception as e:
-        log(f'构建失败: {e}')
+        log(f'构建失败: {type(e).__name__}: {e}')
         raise

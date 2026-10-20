@@ -1,0 +1,39 @@
+name: 前端部署 (云书架)
+
+# master 上 docs/ 前端文件变更时，同步到 gh-pages（不动任何站点数据）。
+# 站点数据由 pages_crawler.yml 在爬取时装配，本工作流只管前端。
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'docs/**'
+      - '!docs/comics/**'
+      - '!docs/data/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 同步前端到 gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python usage/deploy_frontend.py
