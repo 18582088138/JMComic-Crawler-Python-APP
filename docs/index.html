@@ -274,7 +274,6 @@ body::before{
       <div class="hint">实验性功能，爬取稳定性因平台而异，欢迎尝鲜反馈</div>
       <div class="seg" id="srcSeg" style="margin-top:10px">
         <button data-src="mangadex" class="on">MangaDex</button>
-        <button data-src="copymanga">拷贝漫画</button>
         <button data-src="nhentai">nhentai</button>
       </div>
       <div class="inputbox">
@@ -603,9 +602,6 @@ var BETA_SOURCES={
   mangadex:{prefix:'md-',hint:'支持漫画链接（mangadex.org/title/&lt;id&gt;）或章节链接；默认爬最新中/英/日章节',
     parse:function(t){var m=t.match(/mangadex\.org\/(?:title|chapter)\/([0-9a-f-]{36})/);if(m)return m[1];
       if(/^[0-9a-f-]{36}$/.test(t))return t;return null;}},
-  copymanga:{prefix:'cm-',hint:'支持漫画链接（copymanga.tv/comic/&lt;path_word&gt;）或直接填 path_word',
-    parse:function(t){var m=t.match(/\/comic\/([A-Za-z0-9_-]+)/);if(m)return m[1];
-      if(/^[A-Za-z0-9_-]+$/.test(t))return t;return null;}},
   nhentai:{prefix:'nh-',hint:'画廊号或链接（nhentai.net/g/&lt;id&gt;），整本单章',
     parse:function(t){var m=t.match(/nhentai\.net\/g\/(\d+)/);if(m)return m[1];
       if(/^\d+$/.test(t))return t;return null;}},

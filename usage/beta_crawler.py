@@ -318,7 +318,7 @@ def nh_fetch_gallery(session, gid):
             if not m or not pages_block:
                 log(f'{base} 页面结构异常（可能被拦截），尝试下一个镜像')
                 continue
-            tm = re.search(r'<meta property="og:title" content="([^"]+)"', html)
+            tm = re.search(r'<meta property="og:title" content=["“]([^"”]+)', html)
             title = tm.group(1).strip() if tm else f'nhentai {gid}'
             artists = re.findall(r'"artists":\s*\[.*?"name":\s*"([^"]+)"', html)
             types = re.findall(r'\{"t"\s*:\s*"(\w)"', pages_block.group(1))

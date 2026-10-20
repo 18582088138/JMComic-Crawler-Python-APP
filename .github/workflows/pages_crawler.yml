@@ -18,7 +18,6 @@ on:
         options:
           - 'JMComic'
           - 'MangaDex（内测）'
-          - '拷贝漫画（内测）'
           - 'nhentai（内测）'
 
       BETA_LIMIT:
