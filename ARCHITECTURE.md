@@ -1,143 +1,154 @@
-# 移动端云书架 · 架构文档
+# 云书架 · 架构文档
 
-> 本文档梳理「GitHub Actions + GitHub Pages 移动端云书架」子系统的代码结构与核心设计，
+> 本文档梳理「GitHub Actions + GitHub Pages 多平台云书架」子系统的代码结构与核心设计，
 > 不涉及 jmcomic 库本体（`src/jmcomic/`，那是上游的下载引擎）。
 
 ## 1. 系统总览
 
 ```
 ┌──────────────────────┐        ┌───────────────────────────┐
-│  手机/浏览器          │        │  GitHub 云端               │
+│  手机/Pad/PC 浏览器   │        │  GitHub 云端               │
 │                      │        │                            │
-│  GitHub Pages 静态站点│        │  Actions Runner (Ubuntu)   │
-│  ├─ index.html 书架   │  触发   │  ┌──────────────────────┐  │
-│  │   提交任务/进度跟踪 │───────▶│  │ workflow_pages_build │  │
-│  │                    │dispatch│  │  ├─ JMComic 主流程    │  │
-│  ├─ reader.html 阅读器│ 或     │  │  └─ beta_crawler 内测 │  │
-│  │   卷轴/翻页/离线ZIP │ Issue  │  └─────────┬────────────┘  │
-│  │                    │        │            │ 生成站点数据     │
-│  ├─ comics/<id>/     │◀───────│  git push docs/ 回仓库      │
-│  │   图片/manifest/zip│ 静态托管│            │               │
-│  └─ data/comics.json │        │  Pages 自动部署 ◀────────────┘│
-└──────────────────────┘        └───────────────────────────┘
+│  gh-pages 静态站点    │  触发   │  Actions Runner (Ubuntu)   │
+│  ├─ index.html 四分页 │dispatch│  ┌──────────────────────┐  │
+│  │  爬取/找本子/书架  │───────▶│  │ workflow_pages_build │  │
+│  │  /设置            │ 或     │  │  └ crawlers 框架      │  │
+│  ├─ reader.html 阅读器│ Issue  │  │    每站一个爬虫类     │  │
+│  ├─ sw.js 离线缓存   │        │  └─────────┬────────────┘  │
+│  └─ comics/ 图片/zip │◀───────│            │                │
+└──────────▲───────────┘ 静态托管│  data/<site> 分支（每站一个）│
+           │                     │  gh-pages 分支（装配产物）   │
+           └─────────────────────│  均单 commit force-push    │
+                                  └───────────────────────────┘
 ```
 
-**职责划分**：浏览器只做"遥控器 + 阅读器"；Pages 只做静态文件橱窗；
-所有爬取都在 Actions 云端（境外机房，天然绕过源站地区限制）。
+**职责划分**：浏览器只做"遥控器 + 阅读器"；爬取全在 Actions 云端（境外机房，天然绕过源站地区限制）；
+数据按站点存孤立分支，gh-pages 只做装配与托管。
 
-## 2. 文件结构与职责
+## 2. 分支模型（P0：git 历史不膨胀）
 
-| 文件 | 层 | 职责 |
+| 分支 | 内容 | 写入方式 |
 | --- | --- | --- |
-| `docs/index.html` | 前端 | 书架主页：提交爬取（JM + 内测平台）、任务进度跟踪、书架（喜欢置顶/进度角标）、设置（Token/仓库） |
-| `docs/reader.html` | 前端 | 阅读器：卷轴/翻页双模式、点按/滑动/键盘翻页、章节跳转、进度记忆、离线 ZIP 解包阅读 |
-| `docs/vendor/jszip.min.js` | 前端 | 离线 ZIP 解包依赖（内嵌保证离线可用） |
-| `docs/data/comics.json` | 数据 | 书架索引（构建脚本每次运行时更新） |
-| `docs/comics/<id>/` | 数据 | 每本漫画：`images/<章>/<页>`、`cover.jpg`、`manifest.json`、`<id>.zip` |
-| `index.html`（根目录） | 兼容 | Pages 源被配成根目录时自动跳转到 `docs/` |
-| `.github/workflows/pages_crawler.yml` | 编排 | 触发入口（workflow_dispatch / issues）、环境装配、执行构建、git push 回仓库、issue 结果回复 |
-| `usage/workflow_pages_build.py` | 后端 | 构建主脚本：解析输入 → 下载 → 生成站点数据 → 更新索引 → 保留策略清理 |
-| `usage/beta_crawler.py` | 后端 | 内测多平台爬取器（MangaDex / nhentai；拷贝漫画代码保留暂下架） |
-| `assets/option/option_pages_build.yml` | 配置 | JMComic 下载配置（api 客户端免登录、章节维度目录规则） |
+| `master` | 代码 + 前端源文件（`docs/` 不含数据） | 正常开发提交 |
+| `data/<site>` | 每站一个孤立分支：`comics/<id>/` + `index.json` | 每次爬取后单 commit **force-push** |
+| `gh-pages` | Pages 源：前端 + 全站 `comics/` 合并 + `data/*.json` 聚合 | 每次爬取/前端部署后单 commit **force-push** |
 
-## 3. 核心链路
+- 单 commit force-push ⇒ 历史永不积累图片 blob；旧 blob 失去引用后被 GC。
+- 相同内容的 blob 在 git 对象库只存一份，data 分支与 gh-pages 不重复占空间。
+- 已注册站点：`jmcomic`（JM 纯数字车号）、`mangadex`、`nhentai`、`manhuagui`、`dmzj`、`wnacg`、`ehentai`、`bika`；兜底 `generic` 不落分支。
+- 书架 ID 带站点前缀（`md-`/`nh-`/`mg-`/`dz-`/`wn-`/`eh-`/`bk-`），JM 沿用纯数字，互不冲突。
 
-### 3.1 任务提交（两条通路）
+**已知限制**：GITHUB_TOKEN 推送 gh-pages **不会自动触发 Pages 构建**（GitHub 限制），
+两个工作流都在推送后显式 `POST /repos/{repo}/pages/builds` 请求部署（含失败路径：
+`last_run.json`/`wishlist.json` 是 Contents API 直写 gh-pages 的，同样需要部署才可见）。
 
-1. **Token 通路（推荐）**：页面用用户存在 localStorage 的 Fine-grained PAT 调
-   `POST /repos/{repo}/actions/workflows/pages_crawler.yml/dispatches`。
-   全程网页内完成，可轮询工作流状态，**不产生任何 issue**。
-2. **Issue 通路（免 Token 兜底）**：页面打开预填的 `[jm] <目标>` issue 创建页；
-   工作流监听 `issues: opened` 事件自动执行，成功后自动评论链接并关闭 issue。
-   issue 正文支持 `mode:/source:/limit:/keep:` 覆盖项。
+## 3. 文件结构与职责
 
-### 3.2 构建管线（workflow_pages_build.py）
+### 后端（master）
+
+| 文件 | 职责 |
+| --- | --- |
+| `usage/crawlers/base.py` | 爬虫基类：统一 meta 契约、模板方法 `crawl()`、图片下载 |
+| `usage/crawlers/registry.py` | 站点注册表 + `detect_crawler()` 自动识别 + 统一入口 `crawl()` |
+| `usage/crawlers/<site>.py` | 每站一个爬虫类（jmcomic/mangadex/nhentai/manhuagui/dmzj/wnacg/ehentai/bika；copymanga 保留未注册） |
+| `usage/crawlers/generic.py` | 通用兜底：script JSON 数组 / img 目录分组两种启发式；失败抛 `GenericCrawlFailed` |
+| `usage/site_builder.py` | 站点数据构建：图片/封面/manifest/zip/index.json upsert/retention |
+| `usage/branch_store.py` | 分支存储层：worktree 打开/单 commit force-push/gh-pages 装配/Contents API 小文件 |
+| `usage/workflow_pages_build.py` | 主入口编排：解析输入 → 识别站点 → 爬取 → 构建 → 发布 → 状态上报 |
+| `usage/deploy_frontend.py` | 前端独立部署（docs/** 变更时由 pages_deploy.yml 调起） |
+| `usage/migrate_to_branches.py` | 一次性迁移脚本（master docs/comics → 孤立分支，已执行，留档） |
+| `usage/export_sites.py` | 从注册表生成 `docs/js/sites-data.js`（前后端站点列表单一事实源） |
+| `assets/option/option_pages_build.yml` | JMComic 下载配置（api 客户端免登录） |
+
+### 前端（master `docs/`，随装配进 gh-pages）
+
+| 文件 | 职责 |
+| --- | --- |
+| `index.html` + `css/app.css` | 四分页外壳：爬取/找本子/书架/设置；<768px 底部标签栏，≥768px 左侧导航轨 |
+| `js/app.js` | hash 路由（`#/crawl` 等）+ 启动 |
+| `js/view-crawl.js` | 爬取页：平台自动识别 chip、手动指定、任务提交（Token dispatch / Issue 兜底）、进度跟踪、最近失败展示 |
+| `js/view-find.js` | 找本子页：每站一张卡片跳转站点主页 |
+| `js/view-shelf.js` | 书架页：站点筛选、喜欢置顶、分页（12/页）、阅读/ZIP 下载、离线角标 |
+| `js/view-settings.js` | 设置页：仓库/Token/检查清单/愿望清单 |
+| `js/task.js` / `js/github.js` / `js/util.js` | 任务状态机 / GitHub API / 工具 |
+| `js/sites-data.js` | **由 export_sites.py 生成，勿手改** |
+| `reader.html` + `css/reader.css` + `js/reader.js` | 阅读器：卷轴/翻页双模式、进度记忆、章节跳转、全本离线缓存、本地 ZIP 解包 |
+| `sw.js` | Service Worker：外壳 SWR、`comics/*` cache-first、`data/*` network-first |
+| `vendor/jszip.min.js` | 离线 ZIP 解包依赖 |
+
+## 4. 核心链路
+
+### 4.1 爬取管线
 
 ```
-输入(链接/ID) → parse → 下载(原始目录) → build_site → 站点数据
-                                ↓
-   raw_dir/<章>/xxx.jpg  →  docs/comics/<id>/images/<章>/NNN.<原后缀>
-                            docs/comics/<id>/cover.jpg   (首页缩到480宽)
-                            docs/comics/<id>/manifest.json
-                            docs/comics/<id>/<id>.zip    (ZIP_STORED 快速打包)
-                            docs/data/comics.json        (索引 upsert，最新在前)
-                            保留策略: 超出 KEEP_LATEST 的旧本子整目录删除
+输入(任意站点链接/ID) → detect_crawler 自动识别(或显式 source)
+  → crawler.crawl() → meta + raw_dir          （JM 复用 jmcomic 库整本下载）
+  → site_builder.build_site() → data/<site> worktree:
+        comics/<id>/images/<章>/NNN.<原后缀>
+        comics/<id>/cover.jpg   (首页缩到480宽)
+        comics/<id>/manifest.json
+        comics/<id>/<id>.zip    (ZIP_STORED；JM 沿用 JM<id>.zip 命名)
+        index.json              (该站索引 upsert，最新在前)
+        retention: 每站超出 KEEP_LATEST 的旧本子整目录删除
+  → data/<site> 单 commit force-push
+  → gh-pages 装配：同步前端 + 同步该站 comics + 聚合 data/comics.json
+  → gh-pages 单 commit force-push → POST /pages/builds → 部署
 ```
 
-### 3.3 多平台契约（beta_crawler.py）
+### 4.2 任务提交（三条通路，同旧版）
 
-各平台爬取器只需实现统一契约，即可复用整条站点生成管线：
+1. **一键创建经典 PAT（推荐）**：设置页按钮直达预填 `public_repo` 的创建页，30 秒完成。
+2. **Fine-grained PAT**：权限可窄到单仓库 Actions 读写，需手动勾选。
+3. **Issue 兜底**：`[jm] <目标>` 标题触发 `issues` 事件，成功自动回评关单，失败也回评。
+   正文支持 `mode:/source:/limit:/keep:` 覆盖项。
+> 已否决：OAuth Device Flow（`github.com/login/*` 端点无 CORS，纯前端不可行）。
 
-```python
-meta = {'id': 'md-xxx', 'title': str, 'authors': [...], 'tags': [...],
-        'description': str,
-        'chapters': [{'photo_id': str, 'dir_name': '1', 'title': str}, ...]}
-raw_dir/<dir_name>/  # 该章图片，文件名可自然排序
-```
+### 4.3 状态与愿望清单（P1）
 
-书架 ID 带平台前缀（`md-`/`nh-`），与 JM 纯数字车号隔离，互不冲突。
+- 每次构建（无论成败）经 Contents API 写 `data/last_run.json`（状态/错误/运行链接），
+  爬取页直接展示最近一次失败原因，不用翻 Actions 日志。
+- 通用兜底失败时把域名追加进 `data/wishlist.json`（按域名去重，上限 100），
+  设置页「愿望清单」展示，作为新平台适配候选。
 
-### 3.4 阅读器（reader.html）
+### 4.4 离线（P3）
 
-- 在线模式：`reader.html?id=<书架ID>[&ch=N&p=N]` → 拉取 `comics/<id>/manifest.json` 渲染。
-- 离线模式：`reader.html?local=1` → 选择本地 ZIP → JSZip 浏览器内解包 →
-  按压缩包目录结构分章，blob URL 直读，无需任何网络请求。
-- 进度存 `localStorage: jm_prog_<id>`，书架卡片显示"读到 X 章 X 页"。
+- SW 安装时缓存应用外壳；`comics/*` 图片 cache-first（看过即缓存）。
+- 阅读器「缓存全本」按钮：并发 4 路预取全本图片 → SW 拦截入缓存 →
+  完成后写 `jm_offline_<id>`，书架显示「已离线」角标，断网可读。
+- 页面导航 network-first，保证前端更新及时生效。
 
-## 4. 关键设计决策与权衡
+## 5. 运维状态与排障速查
 
-| 决策 | 选择 | 理由 / 代价 |
-| --- | --- | --- |
-| 站点形态 | 单文件 HTML + 内联 CSS/JS，无构建步骤 | Pages 直接可部署、零工具链；代价是单文件偏大（当前规模可接受） |
-| 任务触发 | dispatch 为主、issue 为兜底 | GitHub 没有免鉴权的触发 API，见下文 §5 |
-| 图片存储 | 提交到仓库 `docs/comics/` | 零外部依赖、Pages 直出；代价是 git 历史会累积图片 blob（见 roadmap P0） |
-| 内测平台 | 统一契约 + 平台前缀 ID | 新增平台只需实现一个 crawl 函数；拷贝漫画因其 API 变动暂下架 |
-| 下载引擎 | JM 主流程复用 jmcomic 库；内测平台用 curl_cffi | curl_cffi 是 jmcomic 既有依赖，自带浏览器指纹可过部分 Cloudflare |
-
-## 5. 任务提交的三种鉴权方式
-
-GitHub 触发工作流的 API（`workflow_dispatch`/`repository_dispatch`）**强制要求鉴权**，
-纯静态网页没有"免登录触发"的官方手段，因此提供三条通路（推荐程度递减）：
-
-1. **一键创建经典 PAT（推荐）**：设置页按钮直达
-   `github.com/settings/tokens/new?scopes=public_repo&description=...`
-   （经典 Token 创建页支持 URL 预填 scope），用户 Generate 后粘贴回来，约 30 秒。
-2. **Fine-grained PAT**：权限可窄到单仓库 Actions 读写，但创建页不支持 URL 预填，需手动勾选。
-3. **Issue 兜底**：利用「开 issue 能触发 `issues` 事件」提交任务，成功后 bot 自动回评并关闭。
-   前两者都未配置时的降级路径，issue 即开即焚不会堆积。
-
-> 已否决方案：OAuth Device Flow 纯前端授权。`github.com/login/device/code` 与
-> `/login/oauth/access_token` 均不返回 CORS 头（实测任意 Origin 都被浏览器拦截），
-> 静态网页无法直接调用；若引入 token 交换代理则得不偿失。GitHub App 同理需要
-> client secret 换 token，不适合无后端静态站。
-
-## 6. Roadmap（按优先级）
-
-- **P0 仓库体积**：图片进 git 历史会无限累积（保留策略只删工作区不删历史）。
-  中期方案：站点数据改推送到孤立分支（如 `gh-pages`，每次 force-push 单 commit），
-  Pages 源切到该分支，master 历史保持干净。
-- **P1 失败可见性**：工作流失败时也回评 issue / 写 `data/last_run.json` 状态文件，
-  网页直接展示失败原因，不用翻 Actions 日志。
-- ~~P2 免 Token 一键授权~~（Device Flow 因 OAuth 端点无 CORS 被否决，改以预填 scope 的
-  经典 PAT 直达链接实现 30 秒配置，见 §5）
-- **P3 体验**：阅读器 Service Worker 缓存已读漫画实现真·离线；前端拆模块提升缓存效率。
-
-## 7. 运维状态与排障速查
-
-**仓库设置（已配置好，勿重复）**：Pages 源 = `master /docs`；
-Actions Workflow permissions = write（否则工作流推不回数据，静默失败）；
-Issues = 开启（fork 默认关闭，免登录提交依赖它，GUI 提交前会预检 `has_issues`）。
+**仓库设置（已配置好，勿重复）**：Pages 源 = `gh-pages /(root)`；
+Actions Workflow permissions = write；Issues = 开启。
 
 **本地测试**：
-- 站点构建用 mock：`JM_PAGES_MOCK=1 JM_PAGES_INPUT=<id> python usage/workflow_pages_build.py`
-- 页面调试：`cd docs && python -m http.server 8901`，iframe 嵌套页面可模拟手机视口
+- 构建 mock：`JM_PAGES_MOCK=1 JM_PAGES_INPUT=<id> JM_PAGES_SOURCE=mangadex python usage/workflow_pages_build.py`
+  （写入 ./docs 旧布局，不碰分支；docs/comics、docs/data 已 gitignore）
+- 只构建不推分支（真实爬取）：`JM_PAGES_PUBLISH=0 ...`
+- 页面调试：`cd docs && python -m http.server 8901`，iframe 嵌套可模拟手机视口
+- 注册表变更后跑 `python usage/export_sites.py` 重新生成前端站点配置
 - 本机无法访问禁漫域名与多数漫画站（真实爬取只能推到 Actions 验证）；MangaDex、pypi、unpkg 可通，jsdelivr 被墙
 
 **排障速查**：
-- `usage_log` 插件依赖 `psutil`，不在 jmcomic 依赖里，工作流需单独 `pip install psutil`
-- 工作流每次成功都会自动提交 `pages: 更新移动端书库`，本地 push 被拒先 `git pull --rebase`
+- `usage_log` 插件依赖 `psutil`，工作流需单独 `pip install psutil`
 - 本子原图多为 `.webp`，manifest 保留原后缀，手写测试 URL 勿想当然用 `.jpg`
-- 内测平台统一用 `curl_cffi`（jmcomic 依赖、过 Cloudflare）；`requests` 不在依赖里
-- MangaDex 语言过滤参数只接受 `zh/zh-hk/en/ja`（`zh-hans` 会 400）
-- nhentai 主站封数据中心 IP（API 403、页面假 404），靠镜像 `nhentai.to/.xxx` 回退
-- `github.com/login/*` OAuth 端点无 CORS（任何 Origin），纯前端 Device Flow 不可行
+- 统一用 `curl_cffi`（jmcomic 依赖、过 Cloudflare）；`requests` 不在依赖里
+- MangaDex 语言过滤只接受 `zh/zh-hk/en/ja`；部分热门作品是外部托管章节抓不到图（报"没有找到可下载的章节"）
+- nhentai 主站封数据中心 IP，靠镜像 `nhentai.to/.xxx` 回退
+- **新站点（漫画柜/动漫之家/wnacg/E-Hentai/哔咔）按公开爬虫通行做法编写，本地被墙未逐站实测**；
+  哪个站报错先看 Actions 日志，多半是页面结构/API 变动，改对应 crawler 即可
+- GITHUB_TOKEN 推 gh-pages 不触发 Pages 构建，必须显式 POST /pages/builds
+- 纯数字输入一律按 JMComic 车号处理（历史约定）；nhentai 等数字 ID 站点请贴链接或显式选平台
+
+## 6. Roadmap
+
+- ~~P0 仓库体积~~：已解决（孤立分支 + 单 commit force-push，见 §2）
+- ~~P1 失败可见性~~：已解决（`data/last_run.json` + 页面展示 + issue 失败回评）
+- ~~P2 免 Token 一键授权~~：已否决（Device Flow 无 CORS），以预填 PAT 链接替代
+- ~~P3 离线~~：已解决（SW cache-first + 全本缓存按钮）
+- 新站点按公开实现编写，待逐站云端实测校准（漫画柜的 packer 解包、dmzj 的 muwai API、
+  哔咔的签名、wnacg 的 /data/t/ 变换、E-Hentai 的配额限速是重点观察项）
+- 历史遗留：master 早期提交仍含旧图片 blob（约 200MB），如需彻底瘦身可择期
+  filter-repo 重写 master 历史（破坏性操作，需全量重新 fork/clone）
+- 待研究：拷贝漫画 API 稳定后重新启用（代码保留在 `usage/crawlers/copymanga.py`）
