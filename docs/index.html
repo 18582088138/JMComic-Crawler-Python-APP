@@ -97,6 +97,8 @@ body::before{
 .bigbtn:disabled{opacity:.5;box-shadow:none}
 .bigbtn.ghost{background:var(--card2);box-shadow:none;border:1px solid var(--line);color:var(--txt);
   font-weight:600;font-size:.85rem;padding:12px;margin-top:10px}
+.row2{display:flex;gap:10px}
+.row2 .bigbtn{flex:1}
 
 /* ---------- 任务状态 ---------- */
 #taskCard{display:none}
@@ -136,6 +138,15 @@ body::before{
 .cover img{position:relative;z-index:1;width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .4s}
 .cover img.ok{opacity:1}
 .cover .ph{position:absolute;inset:0;display:grid;place-items:center;color:var(--txt3);font-size:1.6rem}
+.favbtn{
+  position:absolute;z-index:3;left:8px;top:8px;width:32px;height:32px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.55);backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);display:grid;place-items:center;cursor:pointer;padding:0;
+  color:rgba(255,255,255,.75);transition:.18s;
+}
+.favbtn svg{width:16px;height:16px;fill:currentColor}
+.favbtn.on{color:#ff5c8a;border-color:rgba(255,92,138,.55);background:rgba(60,10,25,.6)}
+.favbtn:active{transform:scale(1.25)}
 .badges{position:absolute;z-index:2;top:8px;right:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
 .badge{font-size:.6rem;font-weight:700;padding:3px 7px;border-radius:7px;backdrop-filter:blur(8px);
   background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.15)}
@@ -232,6 +243,10 @@ body::before{
       <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg>
       开始爬取
     </button>
+    <div class="row2">
+      <button class="bigbtn ghost" id="findBtn">🔍 去 JMComic 找本子</button>
+      <button class="bigbtn ghost" id="offlineBtn">📂 离线阅读 ZIP</button>
+    </div>
     <div class="hint" style="margin-top:10px">💡 爬取在 GitHub Actions 云端进行，提交后约 1~3 分钟上架，期间可关闭本页</div>
   </section>
 
@@ -487,7 +502,23 @@ function openIssueFlow(repo,id){
   toast('已打开 Issue 创建页，提交后自动开始爬取',3500);
 }
 
+/* ================= 找本子 / 离线阅读 ================= */
+$('#findBtn').addEventListener('click',function(){
+  window.open('https://18comic.vip/','_blank');
+  toast('找到喜欢的本子后，复制链接回来粘贴即可',3000);
+});
+$('#offlineBtn').addEventListener('click',function(){
+  location.href='reader.html?local=1';
+});
+
 /* ================= 书架 ================= */
+var favs=new Set(store.get('favs',[]));
+function toggleFav(id){
+  id=String(id);
+  if(favs.has(id))favs.delete(id);else favs.add(id);
+  store.set('favs',Array.from(favs));
+}
+var shelfData=[];
 function progressOf(id){
   var p=store.get('prog_'+id,null);
   if(!p)return null;
@@ -501,16 +532,23 @@ function renderShelf(comics){
       '<p>书架空空如也<br>在上方粘贴本子链接，开始你的第一次云端爬取吧</p></div>';
     return;
   }
-  box.innerHTML=comics.map(function(c,i){
+  // 喜欢的排在前面（同组内保持更新时间倒序）
+  var sorted=comics.slice().sort(function(a,b){
+    return (favs.has(String(b.id))?1:0)-(favs.has(String(a.id))?1:0);
+  });
+  box.innerHTML=sorted.map(function(c,i){
     var prog=progressOf(c.id);
     var badges='';
     if(c.hasZip)badges+='<span class="badge zip">ZIP</span>';
     if(prog)badges+='<span class="badge prog">读到 '+(prog.ch)+'章'+(prog.p?(' '+prog.p+'页'):'')+'</span>';
     var readBtn=c.hasReader!==false?'<a class="read" href="reader.html?id='+encodeURIComponent(c.id)+'">📖 阅读</a>':'';
     var dlBtn=c.hasZip?'<a class="dl" href="comics/'+encodeURIComponent(c.id)+'/'+encodeURIComponent('JM'+c.id+'.zip')+'">📦 下载</a>':'';
+    var favOn=favs.has(String(c.id));
     return '<div class="book" style="animation-delay:'+(i*0.05)+'s" data-id="'+esc(c.id)+'">'+
       '<div class="cover"><div class="ph">📖</div>'+
       (c.cover?'<img loading="lazy" src="'+esc(c.cover)+'?t='+encodeURIComponent(c.updatedAt||'')+'" alt="">':'')+
+      '<button class="favbtn'+(favOn?' on':'')+'" data-fav="'+esc(c.id)+'" title="'+(favOn?'取消喜欢':'喜欢')+'">'+
+      '<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button>'+
       '<div class="badges">'+badges+'</div></div>'+
       '<div class="binfo"><div class="t">'+esc(c.title)+'</div>'+
       '<div class="m"><i>'+esc(c.author||'未知')+'</i><i>'+(c.pageCount||0)+'页</i><i>'+relTime(c.updatedAt)+'</i></div>'+
@@ -520,9 +558,17 @@ function renderShelf(comics){
     img.addEventListener('load',function(){img.classList.add('ok')});
     img.addEventListener('error',function(){img.remove()});
   });
+  box.querySelectorAll('.favbtn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      toggleFav(btn.dataset.fav);
+      renderShelf(shelfData);
+      toast(favs.has(String(btn.dataset.fav))?'已标记喜欢，置顶显示 ❤':'已取消喜欢');
+    });
+  });
   box.querySelectorAll('.book').forEach(function(el){
     el.addEventListener('click',function(e){
-      if(e.target.closest('a'))return;
+      if(e.target.closest('a,button'))return;
       var c=comics.filter(function(x){return String(x.id)===el.dataset.id})[0];
       if(c&&c.hasReader!==false)location.href='reader.html?id='+encodeURIComponent(c.id);
     });
@@ -533,7 +579,7 @@ function loadShelf(){
   box.innerHTML='<div class="sk"></div><div class="sk"></div>';
   fetch('data/comics.json?t='+Date.now(),{cache:'no-store'})
     .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
-    .then(function(data){renderShelf(data.comics||[])})
+    .then(function(data){shelfData=data.comics||[];renderShelf(shelfData)})
     .catch(function(){
       box.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="art">🛠️</div>'+
         '<p>暂时无法读取书架<br>若是首次使用，请先到「设置」完成 Pages 开启步骤<br>之后再点击右上角刷新</p></div>';

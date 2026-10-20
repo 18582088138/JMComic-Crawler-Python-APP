@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>阅读 - JMComic 云书架</title>
 <link rel="icon" type="image/svg+xml" href="icon.svg">
+<script src="vendor/jszip.min.js"></script>
 <style>
 :root{
   --bar:rgba(14,16,23,.86); --line:rgba(255,255,255,.1);
@@ -161,6 +162,20 @@ body.paged-mode #pageView{display:block}
 #fatal p{font-size:.78rem;color:var(--txt3);margin-bottom:22px;line-height:1.7}
 #fatal a{display:inline-block;text-decoration:none;background:var(--grad);color:#fff;
   padding:12px 26px;border-radius:14px;font-size:.85rem;font-weight:700}
+
+/* ---------- 离线 ZIP 入口 ---------- */
+#localGate{position:fixed;inset:0;z-index:250;display:none;place-items:center;background:#0b0d13;
+  text-align:center;padding:24px}
+#localGate.show{display:grid}
+#localGate .art{font-size:3.2rem;margin-bottom:14px}
+#localGate h2{font-size:1.1rem;margin-bottom:8px}
+#localGate p{font-size:.78rem;color:var(--txt3);line-height:1.8;margin-bottom:24px}
+#localGate .lg-btn{border:none;background:var(--grad);color:#fff;padding:14px 34px;border-radius:15px;
+  font-size:.92rem;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(124,108,255,.35)}
+#localGate .lg-btn:active{transform:scale(.96)}
+#localGate .lg-status{font-size:.72rem;color:var(--txt2);margin-top:16px;min-height:1.2em;
+  max-width:78vw;word-break:break-all}
+#localGate .lg-back{display:inline-block;margin-top:22px;color:var(--ac2);font-size:.78rem;text-decoration:none}
 </style>
 </head>
 <body>
@@ -259,6 +274,17 @@ body.paged-mode #pageView{display:block}
   <a href="index.html">返回书架</a>
 </div></div>
 
+<!-- 离线 ZIP 入口 -->
+<div id="localGate"><div>
+  <div class="art">📂</div>
+  <h2>离线阅读</h2>
+  <p>选择已下载到本机的 ZIP 压缩包<br>无需联网爬取，图片直接在浏览器内解包阅读</p>
+  <button class="lg-btn" id="pickZipBtn">选择 ZIP 文件</button>
+  <div class="lg-status" id="lgStatus"></div>
+  <a class="lg-back" href="index.html">← 返回书架</a>
+  <input type="file" id="zipFile" accept=".zip,application/zip" style="display:none">
+</div></div>
+
 <script>
 (function(){
 'use strict';
@@ -274,6 +300,7 @@ var store={
 
 /* ================= 状态 ================= */
 var qs=new URLSearchParams(location.search);
+var isLocal=qs.get('local')==='1';
 var S={
   id:qs.get('id'),
   manifest:null,
@@ -285,44 +312,115 @@ var S={
   fit:store.get('fit','contain'),
   ui:true,
 };
-if(!S.id){fatal('缺少本子ID参数');return;}
-S.baseUrl='comics/'+encodeURIComponent(S.id)+'/';
 
 function chapter(){return S.manifest.chapters[S.ch-1]}
 function pageCount(){return chapter().pages.length}
-function pageUrl(chIdx,pIdx){return S.baseUrl+S.manifest.chapters[chIdx-1].pages[pIdx-1]}
+function pageUrl(chIdx,pIdx){
+  var u=S.manifest.chapters[chIdx-1].pages[pIdx-1];
+  return /^(blob|data|https?):/.test(u)?u:(S.baseUrl+u);
+}
 
 /* ================= 初始化 ================= */
-fetch(S.baseUrl+'manifest.json?t='+Date.now(),{cache:'no-store'})
-  .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
-  .then(function(m){
-    if(!m.chapters||!m.chapters.length)throw new Error('no chapters');
-    S.manifest=m;
-    document.title='《'+m.title+'》- JMComic 云书架';
-    $('#comicTitle').textContent=m.title;
-    if(m.hasZip&&m.zip){
-      var zb=$('#zipBtn');zb.style.display='grid';
-      zb.addEventListener('click',function(){location.href=S.baseUrl+encodeURIComponent(m.zip)});
-    }
-    // 恢复进度
-    if(!S.ch){
-      var prog=store.get('prog_'+S.id,null);
-      if(prog&&prog.ch<=m.chapters.length){
-        S.ch=prog.ch;S.p=prog.p||1;
-        setTimeout(function(){toast('已恢复到 第'+S.ch+'章 第'+S.p+'页')},600);
-      }else{S.ch=1;S.p=1;}
-    }
-    if(!S.p)S.p=1;
-    buildChapterList();
-    initSettings();
-    applyMode(S.mode,true);
-  })
-  .catch(function(){fatal('本子不存在或尚未爬取','manifest 加载失败，可能还在部署中，稍等 1~2 分钟刷新试试')});
+if(isLocal){
+  initLocalGate();
+}else{
+  if(!S.id){fatal('缺少本子ID参数');}
+  else{
+    S.baseUrl='comics/'+encodeURIComponent(S.id)+'/';
+    fetch(S.baseUrl+'manifest.json?t='+Date.now(),{cache:'no-store'})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+      .then(initWithManifest)
+      .catch(function(){fatal('本子不存在或尚未爬取','manifest 加载失败，可能还在部署中，稍等 1~2 分钟刷新试试')});
+  }
+}
+
+function initWithManifest(m){
+  if(!m.chapters||!m.chapters.length){fatal('本子内容为空');return;}
+  S.manifest=m;
+  if(!S.id)S.id=m.id;
+  document.title='《'+m.title+'》- JMComic 云书架';
+  $('#comicTitle').textContent=m.title;
+  if(m.hasZip&&m.zip){
+    var zb=$('#zipBtn');zb.style.display='grid';
+    zb.addEventListener('click',function(){location.href=S.baseUrl+encodeURIComponent(m.zip)});
+  }
+  // 恢复进度
+  if(!S.ch){
+    var prog=store.get('prog_'+S.id,null);
+    if(prog&&prog.ch<=m.chapters.length){
+      S.ch=prog.ch;S.p=prog.p||1;
+      setTimeout(function(){toast('已恢复到 第'+S.ch+'章 第'+S.p+'页')},600);
+    }else{S.ch=1;S.p=1;}
+  }
+  if(!S.p)S.p=1;
+  buildChapterList();
+  initSettings();
+  applyMode(S.mode,true);
+}
 
 function fatal(t,sub){
   var f=$('#fatal');f.classList.add('show');
   if(t)$('#fatalTitle').textContent=t;
   if(sub)$('#fatalSub').textContent=sub;
+}
+
+/* ================= 离线 ZIP 阅读 ================= */
+function naturalCompare(a,b){
+  var ka=a.split(/(\d+)/),kb=b.split(/(\d+)/);
+  for(var i=0;i<Math.max(ka.length,kb.length);i++){
+    var x=ka[i]||'',y=kb[i]||'';
+    if(x===y)continue;
+    var nx=parseInt(x,10),ny=parseInt(y,10);
+    if(!isNaN(nx)&&!isNaN(ny))return nx-ny;
+    return x<y?-1:1;
+  }
+  return 0;
+}
+
+function initLocalGate(){
+  document.title='离线阅读 - JMComic 云书架';
+  var gate=$('#localGate');gate.classList.add('show');
+  $('#pickZipBtn').addEventListener('click',function(){$('#zipFile').click()});
+  $('#zipFile').addEventListener('change',function(){
+    var f=this.files[0];if(!f)return;
+    var st=$('#lgStatus');
+    if(typeof JSZip==='undefined'){st.textContent='❌ 解压组件(JSZip)未加载，请检查 vendor/jszip.min.js';return;}
+    st.textContent='解析中… '+f.name;
+    JSZip.loadAsync(f).then(function(zip){
+      var IMG=/\.(jpe?g|png|webp|gif|avif|bmp)$/i;
+      var groups={},order=[];
+      zip.forEach(function(rel,entry){
+        if(entry.dir||!IMG.test(rel))return;
+        var dir=rel.indexOf('/')>=0?rel.slice(0,rel.lastIndexOf('/')):'';
+        if(!groups[dir]){groups[dir]=[];order.push(dir);}
+        groups[dir].push(rel);
+      });
+      order.sort(naturalCompare);
+      if(!order.length)throw new Error('ZIP 中没有找到图片文件');
+      var chapters=order.map(function(dir,i){
+        var files=groups[dir].slice().sort(naturalCompare);
+        var title=dir?dir.split('/').pop().replace(/^\d+_/,''):'全部图片';
+        return {index:i+1,photoId:'local',title:title,pageCount:files.length,
+          pages:files.map(function(p){return zip.file(p)})};
+      });
+      return Promise.all(chapters.map(function(c){
+        return Promise.all(c.pages.map(function(entry){
+          return entry.async('blob').then(function(b){return URL.createObjectURL(b)});
+        })).then(function(urls){c.pages=urls});
+      })).then(function(){return chapters});
+    }).then(function(chapters){
+      var total=chapters.reduce(function(s,c){return s+c.pageCount},0);
+      var m={id:'local_'+f.name,title:f.name.replace(/\.zip$/i,''),author:'本地文件',authors:[],tags:[],
+        description:'',updatedAt:new Date().toISOString(),hasReader:true,hasZip:false,zip:null,
+        pageCount:total,chapterCount:chapters.length,chapters:chapters};
+      S.id=m.id;
+      gate.classList.remove('show');
+      initWithManifest(m);
+      toast('已加载 '+chapters.length+' 章 / '+total+' 页');
+    }).catch(function(e){
+      st.textContent='❌ '+(e&&e.message?e.message:'无法解析该 ZIP 文件');
+    });
+  });
 }
 
 /* ================= 进度保存 ================= */
@@ -468,7 +566,8 @@ function loadScrollImg(img){
     f.style.minHeight='160px';
     f.addEventListener('click',function(e){
       e.stopPropagation();f.remove();
-      img.src=img.dataset.src+'?retry='+Date.now();
+      var u=img.dataset.src;
+      img.src=/^blob:/.test(u)?u:(u+(u.indexOf('?')>=0?'&':'?')+'retry='+Date.now());
     });
     box.appendChild(f);
   },{once:true});
