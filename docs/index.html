@@ -331,14 +331,17 @@ body::before{
   </div>
 
   <div class="sec">
-    <b>GitHub Token（用于一键提交爬取任务，仅存本机）</b>
-    <input type="password" id="tokenInput" placeholder="ghp_... / github_pat_...">
+    <b>GitHub Token（一键提交爬取任务所需，仅存本机）</b>
+    <button class="bigbtn" id="makeTokenBtn" style="margin-top:4px">⚡ 一键创建 Token（权限已预填）</button>
     <div class="hint">
-      在 GitHub → Settings → Developer settings →
-      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained tokens</a>
-      创建：仅授权本仓库，权限 <code>Actions: Read and write</code> 即可。
-      不填 Token 时，将改用「提 Issue」方式提交任务（需手动点两下）。
+      点上方按钮打开 GitHub 经典 Token 创建页（已预勾 <code>public_repo</code> 权限）：
+      拉到底点 <code>Generate token</code> → 复制 <code>ghp_</code> 开头的字符串 → 粘贴到下面即可。
+      想要最小权限可改用
+      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained token</a>
+      （仅授权本仓库、<code>Actions: Read and write</code>）。
+      都不填时，爬取将改用「提 Issue」方式提交。
     </div>
+    <input type="password" id="tokenInput" placeholder="粘贴 ghp_... / github_pat_...">
   </div>
 
   <div class="sec">
@@ -742,6 +745,12 @@ $('#saveSettingsBtn').addEventListener('click',function(){
   store.set('repo',$('#repoInput').value.trim());
   store.set('token',$('#tokenInput').value.trim());
   closeSettings();toast('设置已保存（仅存储在本机浏览器）');
+});
+
+/* ================= 一键创建 Token ================= */
+$('#makeTokenBtn').addEventListener('click',function(){
+  window.open('https://github.com/settings/tokens/new?scopes=public_repo&description=JMComic%E4%BA%91%E4%B9%A6%E6%9E%B6%E4%B8%80%E9%94%AE%E6%8F%90%E4%BA%A4','_blank');
+  toast('在打开的页面拉到底点 Generate token，复制 ghp_ 字符串回来粘贴',4500);
 });
 
 /* ================= 启动 ================= */

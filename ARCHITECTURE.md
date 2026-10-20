@@ -94,17 +94,22 @@ raw_dir/<dir_name>/  # 该章图片，文件名可自然排序
 | 内测平台 | 统一契约 + 平台前缀 ID | 新增平台只需实现一个 crawl 函数；拷贝漫画因其 API 变动暂下架 |
 | 下载引擎 | JM 主流程复用 jmcomic 库；内测平台用 curl_cffi | curl_cffi 是 jmcomic 既有依赖，自带浏览器指纹可过部分 Cloudflare |
 
-## 5. 为什么免 Token 提交要走 Issue？
+## 5. 任务提交的三种鉴权方式
 
-这是 **GitHub 平台约束**下的兜底方案，不是首选路径：
+GitHub 触发工作流的 API（`workflow_dispatch`/`repository_dispatch`）**强制要求鉴权**，
+纯静态网页没有"免登录触发"的官方手段，因此提供三条通路（推荐程度递减）：
 
-- GitHub 触发工作流的 API（`workflow_dispatch`/`repository_dispatch`）**强制要求鉴权**，
-  纯静态网页没有任何"免登录触发"的官方手段。
-- 不想手动创建 Token 的用户，利用「开 issue 能触发 `issues` 事件」这一合法通道提交任务，
-  成功后 bot 自动评论链接并关闭 issue，issue 即开即焚，不会堆积。
-- 配置了 Token 的用户**完全不会走这条路**（一键提交、零 issue）。
+1. **一键创建经典 PAT（推荐）**：设置页按钮直达
+   `github.com/settings/tokens/new?scopes=public_repo&description=...`
+   （经典 Token 创建页支持 URL 预填 scope），用户 Generate 后粘贴回来，约 30 秒。
+2. **Fine-grained PAT**：权限可窄到单仓库 Actions 读写，但创建页不支持 URL 预填，需手动勾选。
+3. **Issue 兜底**：利用「开 issue 能触发 `issues` 事件」提交任务，成功后 bot 自动回评并关闭。
+   前两者都未配置时的降级路径，issue 即开即焚不会堆积。
 
-更优雅的替代方案见 roadmap P2（GitHub OAuth Device Flow，网页内一键登录授权，无需手动建 Token）。
+> 已否决方案：OAuth Device Flow 纯前端授权。`github.com/login/device/code` 与
+> `/login/oauth/access_token` 均不返回 CORS 头（实测任意 Origin 都被浏览器拦截），
+> 静态网页无法直接调用；若引入 token 交换代理则得不偿失。GitHub App 同理需要
+> client secret 换 token，不适合无后端静态站。
 
 ## 6. Roadmap（按优先级）
 
@@ -113,6 +118,6 @@ raw_dir/<dir_name>/  # 该章图片，文件名可自然排序
   Pages 源切到该分支，master 历史保持干净。
 - **P1 失败可见性**：工作流失败时也回评 issue / 写 `data/last_run.json` 状态文件，
   网页直接展示失败原因，不用翻 Actions 日志。
-- **P2 免 Token 一键授权**：接入 GitHub OAuth Device Flow（纯前端可完成），
-  取代手动创建 PAT 与 issue 兜底。
+- ~~P2 免 Token 一键授权~~（Device Flow 因 OAuth 端点无 CORS 被否决，改以预填 scope 的
+  经典 PAT 直达链接实现 30 秒配置，见 §5）
 - **P3 体验**：阅读器 Service Worker 缓存已读漫画实现真·离线；前端拆模块提升缓存效率。
