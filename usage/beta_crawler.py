@@ -188,12 +188,12 @@ def crawl_mangadex(session, target, work_dir, limit):
 # ============================================================
 
 CM_APIS = [
-    'https://api.copymanga.tv/api/v3',
     'https://api.mangacopy.com/api/v3',
+    'https://www.mangacopy.com/api/v3',
+    'https://api.copymanga.tv/api/v3',
     'https://api.copymanga.org/api/v3',
-    'https://api.copymanga.site/api/v3',
 ]
-CM_UA = {'User-Agent': 'COPY/2.3.0', 'platform': '1', 'Accept': 'application/json'}
+CM_UA = {'User-Agent': 'COPY/2.3.0', 'Accept': 'application/json'}
 
 
 def cm_parse_target(text):
@@ -211,7 +211,9 @@ def cm_get(session, path, params=None):
     for base in CM_APIS:
         try:
             time.sleep(0.4)
-            resp = session.get(base + path, params=params, headers=CM_UA, timeout=30)
+            q = dict(params or {})
+            q.setdefault('platform', '1')
+            resp = session.get(base + path, params=q, headers=CM_UA, timeout=30)
             if resp.status_code != 200:
                 errs.append(f'{base} → HTTP {resp.status_code}: {resp.text[:100]!r}')
                 log(errs[-1] + '，尝试下一个域名')
@@ -287,37 +289,51 @@ def nh_parse_target(text):
     raise ValueError(f'无法识别 nhentai 目标: {text}')
 
 
-def crawl_nhentai(session, target, work_dir, _limit):
-    gid = nh_parse_target(target)
+NH_MIRRORS = ['https://nhentai.net', 'https://nhentai.to', 'https://nhentai.xxx']
 
-    # 优先 JSON API（结构稳定，无需解析 HTML）
+
+def nh_fetch_gallery(session, gid):
+    """依次尝试主站 API / 主站页面 / 镜像站页面，返回 (media_id, title, artists, page_types)"""
     resp = session.get(f'https://nhentai.net/api/gallery/{gid}', timeout=30)
     if resp.status_code == 200:
         data = resp.json()
-        media_id = data['media_id']
         title = (data.get('title') or {}).get('english') or data['title'].get('japanese') or f'nhentai {gid}'
         artists = [t['name'] for t in data.get('tags', []) if t.get('type') == 'artist']
-        urls = [f'https://i.nhentai.net/galleries/{media_id}/{i}.{NH_EXT.get(p.get("t"), "jpg")}'
-                for i, p in enumerate(data['images']['pages'], 1)]
-    else:
-        log(f'nhentai API 返回 {resp.status_code}，回退 HTML 解析')
-        resp = session.get(f'https://nhentai.net/g/{gid}/', timeout=30)
-        resp.raise_for_status()
-        html = resp.text
-        m = re.search(r'<meta property="og:title" content="([^"]+)"', html)
-        title = m.group(1).strip() if m else f'nhentai {gid}'
-        m = re.search(r'"media_id":\s*"?(\d+)"?', html)
-        if not m:
-            raise RuntimeError(f'未能从页面解析 media_id（可能被 Cloudflare 拦截，HTTP {resp.status_code}）')
-        media_id = m.group(1)
-        pages_block = re.search(r'"pages":\s*\[(.*?)\]', html, re.DOTALL)
-        if not pages_block:
-            raise RuntimeError('未能从页面解析图片列表')
-        types = re.findall(r'\{"t"\s*:\s*"(\w)"', pages_block.group(1))
-        urls = [f'https://i.nhentai.net/galleries/{media_id}/{i}.{NH_EXT.get(t, "jpg")}'
-                for i, t in enumerate(types, 1)]
-        artists = re.findall(r'"artists":\s*\[.*?"name":\s*"([^"]+)"', html)
+        types = [p.get('t') for p in data['images']['pages']]
+        log('nhentai 主站 API 命中')
+        return data['media_id'], title, artists, types
+    log(f'nhentai 主站 API 返回 {resp.status_code}，回退页面解析')
 
+    last_status = resp.status_code
+    for base in NH_MIRRORS:
+        try:
+            r = session.get(f'{base}/g/{gid}/', timeout=30)
+            last_status = r.status_code
+            if r.status_code != 200:
+                log(f'{base} 返回 {r.status_code}，尝试下一个镜像')
+                continue
+            html = r.text
+            m = re.search(r'"media_id":\s*"?(\d+)"?', html)
+            pages_block = re.search(r'"pages":\s*\[(.*?)\]', html, re.DOTALL)
+            if not m or not pages_block:
+                log(f'{base} 页面结构异常（可能被拦截），尝试下一个镜像')
+                continue
+            tm = re.search(r'<meta property="og:title" content="([^"]+)"', html)
+            title = tm.group(1).strip() if tm else f'nhentai {gid}'
+            artists = re.findall(r'"artists":\s*\[.*?"name":\s*"([^"]+)"', html)
+            types = re.findall(r'\{"t"\s*:\s*"(\w)"', pages_block.group(1))
+            log(f'{base} 页面解析命中')
+            return m.group(1), title, artists, types
+        except Exception as e:
+            log(f'{base} 请求失败: {e}，尝试下一个镜像')
+    raise RuntimeError(f'nhentai 全部入口不可用（主站最后状态 {last_status}，可能被 Cloudflare 封锁数据中心 IP）')
+
+
+def crawl_nhentai(session, target, work_dir, _limit):
+    gid = nh_parse_target(target)
+    media_id, title, artists, types = nh_fetch_gallery(session, gid)
+    urls = [f'https://i.nhentai.net/galleries/{media_id}/{i}.{NH_EXT.get(t, "jpg")}'
+            for i, t in enumerate(types, 1)]
     log(f'nhentai《{title}》: {len(urls)} 页')
     download_chapter_images(session, urls, os.path.join(work_dir, '1'),
                             referer='https://nhentai.net/', delay=0.3)
