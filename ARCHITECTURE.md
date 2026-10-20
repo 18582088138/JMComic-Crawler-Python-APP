@@ -121,3 +121,23 @@ GitHub 触发工作流的 API（`workflow_dispatch`/`repository_dispatch`）**�
 - ~~P2 免 Token 一键授权~~（Device Flow 因 OAuth 端点无 CORS 被否决，改以预填 scope 的
   经典 PAT 直达链接实现 30 秒配置，见 §5）
 - **P3 体验**：阅读器 Service Worker 缓存已读漫画实现真·离线；前端拆模块提升缓存效率。
+
+## 7. 运维状态与排障速查
+
+**仓库设置（已配置好，勿重复）**：Pages 源 = `master /docs`；
+Actions Workflow permissions = write（否则工作流推不回数据，静默失败）；
+Issues = 开启（fork 默认关闭，免登录提交依赖它，GUI 提交前会预检 `has_issues`）。
+
+**本地测试**：
+- 站点构建用 mock：`JM_PAGES_MOCK=1 JM_PAGES_INPUT=<id> python usage/workflow_pages_build.py`
+- 页面调试：`cd docs && python -m http.server 8901`，iframe 嵌套页面可模拟手机视口
+- 本机无法访问禁漫域名与多数漫画站（真实爬取只能推到 Actions 验证）；MangaDex、pypi、unpkg 可通，jsdelivr 被墙
+
+**排障速查**：
+- `usage_log` 插件依赖 `psutil`，不在 jmcomic 依赖里，工作流需单独 `pip install psutil`
+- 工作流每次成功都会自动提交 `pages: 更新移动端书库`，本地 push 被拒先 `git pull --rebase`
+- 本子原图多为 `.webp`，manifest 保留原后缀，手写测试 URL 勿想当然用 `.jpg`
+- 内测平台统一用 `curl_cffi`（jmcomic 依赖、过 Cloudflare）；`requests` 不在依赖里
+- MangaDex 语言过滤参数只接受 `zh/zh-hk/en/ja`（`zh-hans` 会 400）
+- nhentai 主站封数据中心 IP（API 403、页面假 404），靠镜像 `nhentai.to/.xxx` 回退
+- `github.com/login/*` OAuth 端点无 CORS（任何 Origin），纯前端 Device Flow 不可行
