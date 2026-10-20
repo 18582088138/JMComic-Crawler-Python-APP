@@ -1,0 +1,42 @@
+{
+  "id": "208836",
+  "site": "jmcomic",
+  "title": "[リベイク] 低級アイテム1.5 [中國翻譯]",
+  "author": "リベイク",
+  "authors": [
+    "リベイク"
+  ],
+  "tags": [
+    "束縛",
+    "未上車",
+    "中文"
+  ],
+  "description": "",
+  "sourceUrl": "https://18comic.vip/album/208836/",
+  "totalChapters": 1,
+  "updatedAt": "2026-10-27T15:06:19Z",
+  "hasReader": true,
+  "hasZip": true,
+  "zip": "JM208836.zip",
+  "zipNote": "",
+  "pageCount": 7,
+  "chapterCount": 1,
+  "chapters": [
+    {
+      "photoId": "208836",
+      "title": "[リベイク] 低級アイテム1.5 [中國翻譯]",
+      "order": 1.0,
+      "pageCount": 7,
+      "pages": [
+        "images/208836/001.webp",
+        "images/208836/002.webp",
+        "images/208836/003.webp",
+        "images/208836/004.webp",
+        "images/208836/005.webp",
+        "images/208836/006.webp",
+        "images/208836/007.webp"
+      ],
+      "index": 1
+    }
+  ]
+}
