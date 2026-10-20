@@ -99,6 +99,19 @@ body::before{
   font-weight:600;font-size:.85rem;padding:12px;margin-top:10px}
 .row2{display:flex;gap:10px}
 .row2 .bigbtn{flex:1}
+.betahead{display:flex;align-items:center;cursor:pointer;gap:8px}
+.betahead h2{flex:none}
+.betatag{font-size:.58rem;font-weight:800;color:#0b0d13;background:linear-gradient(135deg,#fbbf24,#f97316);
+  padding:2px 7px;border-radius:6px;letter-spacing:1px}
+.betahead .arrow{margin-left:auto;color:var(--txt3);transition:.2s;font-size:.9rem}
+.betahead.open .arrow{transform:rotate(180deg)}
+.limitrow{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:.78rem;color:var(--txt2)}
+.limitrow input{width:58px;padding:8px 4px;border-radius:10px;border:1px solid var(--line);
+  background:rgba(0,0,0,.3);color:var(--txt);text-align:center;font-size:.8rem;outline:none;font-family:inherit}
+.limitrow span{color:var(--txt3);font-size:.66rem;line-height:1.4}
+#elapsed{font-size:.68rem;color:var(--txt3);margin-left:auto;font-variant-numeric:tabular-nums}
+.taskacts{display:flex;gap:10px;margin-top:4px}
+.taskacts .bigbtn{margin-top:10px}
 
 /* ---------- 任务状态 ---------- */
 #taskCard{display:none}
@@ -250,9 +263,37 @@ body::before{
     <div class="hint" style="margin-top:10px">💡 爬取在 GitHub Actions 云端进行，提交后约 1~3 分钟上架，期间可关闭本页</div>
   </section>
 
+  <!-- 内测：其他漫画平台 -->
+  <section class="card">
+    <div class="betahead" id="betaToggle">
+      <h2><span class="dot"></span>内测：其他漫画平台</h2>
+      <span class="betatag">BETA</span>
+      <span class="arrow" id="betaArrow">▾</span>
+    </div>
+    <div id="betaBody" style="display:none">
+      <div class="hint">实验性功能，爬取稳定性因平台而异，欢迎尝鲜反馈</div>
+      <div class="seg" id="srcSeg" style="margin-top:10px">
+        <button data-src="mangadex" class="on">MangaDex</button>
+        <button data-src="copymanga">拷贝漫画</button>
+        <button data-src="nhentai">nhentai</button>
+      </div>
+      <div class="inputbox">
+        <textarea id="betaInput" rows="2"></textarea>
+      </div>
+      <div class="idchip" id="betaChip"></div>
+      <div class="hint" id="betaHint"></div>
+      <div class="limitrow">
+        章节数
+        <input type="number" id="betaLimit" value="3" min="1" max="10">
+        <span>最多10章，默认爬最新几章；粘贴章节链接则只下该章</span>
+      </div>
+      <button class="bigbtn" id="betaBtn">🧪 开始内测爬取</button>
+    </div>
+  </section>
+
   <!-- 任务状态 -->
   <section class="card" id="taskCard">
-    <h2><span class="dot"></span>任务进度 <span id="taskId" style="color:var(--ac2);font-size:.8rem"></span></h2>
+    <h2><span class="dot"></span>任务进度 <span id="taskId" style="color:var(--ac2);font-size:.8rem"></span><span id="elapsed"></span></h2>
     <div class="steps">
       <div class="step" data-s="dispatch"><div class="ico"></div><div class="txt">提交爬取任务<small id="dispatchSub">触发 GitHub Actions 工作流</small></div></div>
       <div class="step" data-s="run"><div class="ico"></div><div class="txt">云端下载中<small id="runSub">等待工作流执行…</small><a class="runlink" id="runLink" target="_blank" rel="noopener" style="display:none">查看 Actions 日志 →</a></div></div>
@@ -260,7 +301,10 @@ body::before{
       <div class="step" data-s="done"><div class="ico"></div><div class="txt">已上架书架</div></div>
     </div>
     <button class="bigbtn" id="goReadBtn" style="display:none">📖 立即阅读</button>
-    <button class="bigbtn ghost" id="taskResetBtn">收起进度</button>
+    <div class="taskacts">
+      <button class="bigbtn ghost" id="taskRefreshBtn">🔄 立即检查状态</button>
+      <button class="bigbtn ghost" id="taskResetBtn">收起进度</button>
+    </div>
   </section>
 
   <!-- 书架 -->
@@ -303,6 +347,7 @@ body::before{
     <ol>
       <li>仓库 Settings → Pages → Source 选 <code>Deploy from a branch</code>，分支 <code>master</code> 目录 <code>/docs</code></li>
       <li>Settings → Actions → General → Workflow permissions 选 <code>Read and write</code></li>
+      <li>Settings → General → Features 勾选 <code>Issues</code>（免 Token 提交方式需要）</li>
       <li>把本页添加到主屏幕，获得 App 体验</li>
     </ol>
   </div>
@@ -379,8 +424,10 @@ $('#modeSeg').addEventListener('click',function(e){
 var MODE_LABEL={both:'在线阅览 + 打包下载',read:'仅在线阅览',zip:'仅打包下载'};
 
 /* ================= 任务状态机 ================= */
-var pending=store.get('pending',null); // {id,mode,ts}
-var pollTimer=null;
+var pending=store.get('pending',null); // {id,mode,ts,source}
+var pollTimer=null,elapsedTimer=null,lastRunPoll=0;
+var SOURCE_LABEL={jm:'JMComic',mangadex:'MangaDex（内测）',copymanga:'拷贝漫画（内测）',nhentai:'nhentai（内测）'};
+function fmtId(id){return /^\d+$/.test(String(id))?('JM'+id):String(id)}
 function setStep(name,state,sub){
   var el=document.querySelector('.step[data-s="'+name+'"]');
   if(!el)return;
@@ -394,23 +441,32 @@ function resetSteps(){
 }
 function showTask(id){
   $('#taskCard').style.display='block';
-  $('#taskId').textContent='JM'+id;
+  $('#taskId').textContent=fmtId(id);
   resetSteps();
   $('#goReadBtn').style.display='none';
 }
+function startElapsed(){
+  stopElapsed();
+  elapsedTimer=setInterval(function(){
+    if(!pending){stopElapsed();return;}
+    var s=Math.floor((Date.now()-pending.ts)/1000);
+    $('#elapsed').textContent='已等待 '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+  },1000);
+}
+function stopElapsed(){if(elapsedTimer){clearInterval(elapsedTimer);elapsedTimer=null;}$('#elapsed').textContent='';}
 function startPolling(){
   stopPolling();
   pollShelf(); // 立即检查一次（可能已完成）
+  pollRun(true);
   pollTimer=setInterval(function(){
     if(!pending){stopPolling();return;}
     if(Date.now()-pending.ts>20*60*1000){ // 20分钟超时
-      setStep('deploy','fail','等待超时，请到 Actions 页面查看任务状态');
+      setStep('deploy','fail','等待超时：请到 Actions 页面或 Issue 中查看任务状态');
       stopPolling();return;
     }
     pollShelf();
-    pollRun();
+    pollRun(false);
   },15000);
-  pollRun();
 }
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 function pollShelf(){
@@ -418,68 +474,98 @@ function pollShelf(){
     .then(function(r){return r.ok?r.json():null})
     .then(function(data){
       if(!data||!pending)return;
-      var found=(data.comics||[]).some(function(c){return String(c.id)===String(pending.id)});
-      if(found)taskDone();
+      var comics=data.comics||[];
+      // 优先精确匹配；其次接受提交后新上架的任何本子（内测平台ID可能与输入不完全一致）
+      var hit=comics.filter(function(c){return String(c.id)===String(pending.id)})[0];
+      if(!hit){
+        hit=comics.filter(function(c){
+          return new Date(c.updatedAt||0).getTime()>=pending.ts-15000;
+        })[0];
+      }
+      if(hit)taskDone(hit.id);
     }).catch(function(){});
 }
-function pollRun(){
+function pollRun(force){
   var repo=detectRepo(),token=store.get('token','');
-  if(!repo||!token)return; // 无 token 时仅靠 comics.json 探测
-  fetch('https://api.github.com/repos/'+repo+'/actions/workflows/pages_crawler.yml/runs?per_page=3',{
-    headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'}
-  }).then(function(r){return r.ok?r.json():null}).then(function(data){
+  if(!repo)return;
+  // 无 token 也可以查公开仓库的运行状态，但限流 60 次/小时，放慢到 75 秒一次
+  var minGap=token?0:75000;
+  var now=Date.now();
+  if(!force&&now-lastRunPoll<minGap)return;
+  lastRunPoll=now;
+  var headers={Accept:'application/vnd.github+json'};
+  if(token)headers.Authorization='Bearer '+token;
+  fetch('https://api.github.com/repos/'+repo+'/actions/workflows/pages_crawler.yml/runs?per_page=3',{headers:headers})
+  .then(function(r){return r.ok?r.json():null}).then(function(data){
     if(!data||!pending)return;
     var run=(data.workflow_runs||[]).filter(function(x){
       return new Date(x.created_at).getTime()>=pending.ts-90000;
     })[0];
-    if(!run)return;
+    var waited=Date.now()-pending.ts;
+    if(!run){
+      if(waited>120000)setStep('run','doing','未找到运行记录：若刚提交请稍候；若用 Issue 方式请确认已点「Create」');
+      return;
+    }
     var link=$('#runLink');link.href=run.html_url;link.style.display='inline-block';
     if(run.status==='queued'){setStep('dispatch','done');setStep('run','doing','排队中…');}
-    else if(run.status==='in_progress'){setStep('dispatch','done');setStep('run','doing','正在下载本子…');}
+    else if(run.status==='in_progress'){
+      setStep('dispatch','done');
+      setStep('run','doing',waited>8*60000?'下载时间较长（本子较大或源站较慢），可点下方链接查看日志':'正在云端下载…');
+    }
     else if(run.status==='completed'){
       if(run.conclusion==='success'){setStep('dispatch','done');setStep('run','done');setStep('deploy','doing');}
       else{setStep('run','fail','工作流执行失败：'+run.conclusion+'，点击查看日志');stopPolling();}
     }
   }).catch(function(){});
 }
-function taskDone(){
+function taskDone(foundId){
   if(!pending)return;
+  var id=foundId||pending.id;
   setStep('dispatch','done');setStep('run','done');setStep('deploy','done');setStep('done','done');
   var btn=$('#goReadBtn');btn.style.display='flex';
-  btn.onclick=function(){location.href='reader.html?id='+encodeURIComponent(pending.id)};
-  toast('🎉 本子已上架！');
-  var finishedId=pending.id;
-  pending=null;store.set('pending',null);stopPolling();
+  btn.onclick=function(){location.href='reader.html?id='+encodeURIComponent(id)};
+  toast('🎉 已上架书架！');
+  pending=null;store.set('pending',null);stopPolling();stopElapsed();
   loadShelf();
 }
 $('#taskResetBtn').addEventListener('click',function(){
-  pending=null;store.set('pending',null);stopPolling();
+  pending=null;store.set('pending',null);stopPolling();stopElapsed();
   $('#taskCard').style.display='none';
 });
+$('#taskRefreshBtn').addEventListener('click',function(){
+  if(!pending){toast('当前没有进行中的任务');return;}
+  pollShelf();pollRun(true);toast('已检查最新状态');
+});
 
-/* ================= 提交任务 ================= */
-$('#submitBtn').addEventListener('click',function(){
-  var id=parseInput(input.value);
-  if(!id){toast('请先输入有效的本子链接或车牌号');input.focus();return;}
+/* ================= 提交任务（统一入口） ================= */
+function submitTask(task){ // {id, source, limit, btn, btnLabel}
   var repo=detectRepo();
   if(!repo){openSettings();toast('请先在设置中填写仓库地址');return;}
   var token=store.get('token','');
-  if(token){dispatchWorkflow(repo,token,id);}
-  else{openIssueFlow(repo,id);}
+  if(token){dispatchWorkflow(repo,token,task);}
+  else{openIssueFlow(repo,task);}
+}
+$('#submitBtn').addEventListener('click',function(){
+  var id=parseInput(input.value);
+  if(!id){toast('请先输入有效的本子链接或车牌号');input.focus();return;}
+  submitTask({id:id,source:'jm',limit:3,btn:this,btnLabel:'⚡ 开始爬取'});
 });
 
-function dispatchWorkflow(repo,token,id){
-  var btn=$('#submitBtn');btn.disabled=true;btn.textContent='提交中…';
+function dispatchWorkflow(repo,token,task){
+  var btn=task.btn;btn.disabled=true;btn.textContent='提交中…';
   fetch('https://api.github.com/repos/'+repo+'/actions/workflows/pages_crawler.yml/dispatches',{
     method:'POST',
     headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json','Content-Type':'application/json'},
-    body:JSON.stringify({ref:'master',inputs:{JM_ID:id,MODE:MODE_LABEL[mode],KEEP_LATEST:10}})
+    body:JSON.stringify({ref:'master',inputs:{
+      JM_ID:String(task.rawId||task.id),MODE:MODE_LABEL[mode],KEEP_LATEST:10,
+      SOURCE:SOURCE_LABEL[task.source]||'JMComic',BETA_LIMIT:String(task.limit||3)
+    }})
   }).then(function(r){
-    btn.disabled=false;btn.innerHTML='⚡ 开始爬取';
+    btn.disabled=false;btn.textContent=task.btnLabel;
     if(r.status===204){
-      pending={id:id,mode:mode,ts:Date.now()};store.set('pending',pending);
-      showTask(id);setStep('dispatch','done');setStep('run','doing','工作流已触发，等待运行…');
-      startPolling();toast('任务已提交 🚀');
+      pending={id:task.id,mode:mode,ts:Date.now(),source:task.source};store.set('pending',pending);
+      showTask(task.id);setStep('dispatch','done');setStep('run','doing','工作流已触发，等待运行…');
+      startPolling();startElapsed();toast('任务已提交 🚀');
       $('#taskCard').scrollIntoView({behavior:'smooth',block:'nearest'});
     }else if(r.status===404){
       toast('触发失败(404)：请检查仓库名与 Token 权限');
@@ -488,19 +574,76 @@ function dispatchWorkflow(repo,token,id){
     }else{
       toast('触发失败：HTTP '+r.status);
     }
-  }).catch(function(){btn.disabled=false;btn.innerHTML='⚡ 开始爬取';toast('网络错误，无法连接 GitHub API');});
+  }).catch(function(){btn.disabled=false;btn.textContent=task.btnLabel;toast('网络错误，无法连接 GitHub API');});
 }
 
-function openIssueFlow(repo,id){
-  var title='[jm] '+id;
-  var body='mode: '+(mode==='both'?'both':mode)+'\n\n由移动端网页引导创建，爬取完成后本 issue 会自动收到链接并被关闭。';
-  var url='https://github.com/'+repo+'/issues/new?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(body);
-  pending={id:id,mode:mode,ts:Date.now()};store.set('pending',pending);
-  showTask(id);setStep('dispatch','doing','请在打开的页面中点「Create」创建 Issue');
-  startPolling();
-  window.open(url,'_blank');
-  toast('已打开 Issue 创建页，提交后自动开始爬取',3500);
+function openIssueFlow(repo,task){
+  // 预检 Issues 是否开启（fork 仓库默认关闭，未开启会跳到 404）
+  fetch('https://api.github.com/repos/'+repo).then(function(r){return r.ok?r.json():null}).then(function(info){
+    if(info&&info.has_issues===false){
+      toast('仓库未开启 Issues 功能，请按设置页清单开启，或改用 Token 提交',4500);
+      openSettings();return;
+    }
+    var title='[jm] '+(task.rawId||task.id);
+    var lines=['mode: '+(mode==='both'?'both':mode)];
+    if(task.source&&task.source!=='jm')lines.push('source: '+task.source);
+    if(task.source&&task.source!=='jm'&&task.limit)lines.push('limit: '+task.limit);
+    lines.push('','由移动端网页引导创建，爬取完成后本 issue 会自动收到链接并被关闭。');
+    var url='https://github.com/'+repo+'/issues/new?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(lines.join('\n'));
+    pending={id:task.id,mode:mode,ts:Date.now(),source:task.source};store.set('pending',pending);
+    showTask(task.id);setStep('dispatch','doing','请在打开的页面中点「Create」创建 Issue');
+    startPolling();startElapsed();
+    window.open(url,'_blank');
+    toast('已打开 Issue 创建页，提交后自动开始爬取',3500);
+  }).catch(function(){toast('网络异常，无法预检仓库状态');});
 }
+
+/* ================= 内测：其他漫画平台 ================= */
+var BETA_SOURCES={
+  mangadex:{prefix:'md-',hint:'支持漫画链接（mangadex.org/title/&lt;id&gt;）或章节链接；默认爬最新中/英/日章节',
+    parse:function(t){var m=t.match(/mangadex\.org\/(?:title|chapter)\/([0-9a-f-]{36})/);if(m)return m[1];
+      if(/^[0-9a-f-]{36}$/.test(t))return t;return null;}},
+  copymanga:{prefix:'cm-',hint:'支持漫画链接（copymanga.tv/comic/&lt;path_word&gt;）或直接填 path_word',
+    parse:function(t){var m=t.match(/\/comic\/([A-Za-z0-9_-]+)/);if(m)return m[1];
+      if(/^[A-Za-z0-9_-]+$/.test(t))return t;return null;}},
+  nhentai:{prefix:'nh-',hint:'画廊号或链接（nhentai.net/g/&lt;id&gt;），整本单章',
+    parse:function(t){var m=t.match(/nhentai\.net\/g\/(\d+)/);if(m)return m[1];
+      if(/^\d+$/.test(t))return t;return null;}},
+};
+var betaSrc='mangadex';
+$('#betaToggle').addEventListener('click',function(){
+  var body=$('#betaBody'),open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  this.classList.toggle('open',!open);
+});
+$('#srcSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  betaSrc=b.dataset.src;
+  this.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b)});
+  $('#betaHint').innerHTML=BETA_SOURCES[betaSrc].hint;
+  $('#betaInput').value='';refreshBetaChip();
+});
+$('#betaHint').innerHTML=BETA_SOURCES[betaSrc].hint;
+var betaInput=$('#betaInput'),betaChip=$('#betaChip');
+function parseBeta(){
+  var t=betaInput.value.trim();
+  return t?BETA_SOURCES[betaSrc].parse(t):null;
+}
+function refreshBetaChip(){
+  var t=betaInput.value.trim();
+  if(!t){betaChip.className='idchip';return;}
+  var id=parseBeta();
+  if(id){betaChip.className='idchip show';betaChip.innerHTML='✅ 识别ID：<b>'+esc(BETA_SOURCES[betaSrc].prefix+id)+'</b>';}
+  else{betaChip.className='idchip show err';betaChip.textContent='⚠️ 无法识别，请检查链接或ID格式';}
+}
+betaInput.addEventListener('input',refreshBetaChip);
+$('#betaBtn').addEventListener('click',function(){
+  var id=parseBeta();
+  if(!id){toast('请先输入有效的链接或ID');betaInput.focus();return;}
+  var limit=parseInt($('#betaLimit').value,10)||3;
+  limit=Math.max(1,Math.min(10,limit));
+  submitTask({id:BETA_SOURCES[betaSrc].prefix+id,rawId:id,source:betaSrc,limit:limit,btn:this,btnLabel:'🧪 开始内测爬取'});
+});
 
 /* ================= 找本子 / 离线阅读 ================= */
 $('#findBtn').addEventListener('click',function(){
@@ -542,7 +685,8 @@ function renderShelf(comics){
     if(c.hasZip)badges+='<span class="badge zip">ZIP</span>';
     if(prog)badges+='<span class="badge prog">读到 '+(prog.ch)+'章'+(prog.p?(' '+prog.p+'页'):'')+'</span>';
     var readBtn=c.hasReader!==false?'<a class="read" href="reader.html?id='+encodeURIComponent(c.id)+'">📖 阅读</a>':'';
-    var dlBtn=c.hasZip?'<a class="dl" href="comics/'+encodeURIComponent(c.id)+'/'+encodeURIComponent('JM'+c.id+'.zip')+'">📦 下载</a>':'';
+    var zipName=c.zipName||('JM'+c.id+'.zip');
+    var dlBtn=c.hasZip?'<a class="dl" href="comics/'+encodeURIComponent(c.id)+'/'+encodeURIComponent(zipName)+'">📦 下载</a>':'';
     var favOn=favs.has(String(c.id));
     return '<div class="book" style="animation-delay:'+(i*0.05)+'s" data-id="'+esc(c.id)+'">'+
       '<div class="cover"><div class="ph">📖</div>'+
@@ -606,7 +750,7 @@ $('#saveSettingsBtn').addEventListener('click',function(){
 
 /* ================= 启动 ================= */
 loadShelf();
-if(pending){showTask(pending.id);setStep('dispatch','done');setStep('run','doing','恢复任务跟踪…');startPolling();}
+if(pending){showTask(pending.id);setStep('dispatch','done');setStep('run','doing','恢复任务跟踪…');startPolling();startElapsed();}
 })();
 </script>
 </body>

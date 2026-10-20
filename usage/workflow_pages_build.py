@@ -70,7 +70,7 @@ def parse_album_id(text: str) -> str:
 
 
 def parse_issue_body_overrides(body: str):
-    """从 issue 正文中解析可选覆盖项：mode: read|zip|both / keep: 数字"""
+    """从 issue 正文中解析可选覆盖项：mode / keep / source / limit"""
     overrides = {}
     if not body:
         return overrides
@@ -80,6 +80,12 @@ def parse_issue_body_overrides(body: str):
     m = re.search(r'(?im)^\s*keep\s*[:：]\s*(\d+)\s*$', body)
     if m:
         overrides['keep'] = int(m.group(1))
+    m = re.search(r'(?im)^\s*source\s*[:：]\s*(jm|mangadex|copymanga|nhentai)\s*$', body)
+    if m:
+        overrides['source'] = m.group(1).lower()
+    m = re.search(r'(?im)^\s*limit\s*[:：]\s*(\d+)\s*$', body)
+    if m:
+        overrides['limit'] = int(m.group(1))
     return overrides
 
 
@@ -279,7 +285,8 @@ def build_site(meta: dict, raw_dir: str, docs_dir: str, mode: str) -> dict:
     build_cover(first_image, os.path.join(comic_dir, 'cover.jpg'))
 
     if has_zip:
-        zip_name = f'JM{aid}.zip'
+        # JM 本子沿用 JM<id>.zip 命名；内测平台 id 已带前缀，直接 <id>.zip
+        zip_name = f'JM{aid}.zip' if aid.isdigit() else f'{aid}.zip'
         make_zip(raw_dir, meta, os.path.join(comic_dir, zip_name))
         manifest['hasZip'] = True
         manifest['zip'] = zip_name
@@ -298,6 +305,7 @@ def build_site(meta: dict, raw_dir: str, docs_dir: str, mode: str) -> dict:
         'cover': f'comics/{aid}/cover.jpg',
         'hasReader': has_read,
         'hasZip': manifest['hasZip'],
+        'zipName': manifest['zip'],
         'updatedAt': manifest['updatedAt'],
         'sizeBytes': manifest['sizeBytes'],
     }
@@ -393,25 +401,42 @@ def main():
     if mode not in ('both', 'read', 'zip'):
         mode = 'both'
     keep = int(env('JM_PAGES_KEEP', '10') or '10')
+    source = env('JM_PAGES_SOURCE', 'jm').lower()
+    limit = int(env('JM_PAGES_LIMIT', '3') or '3')
 
     overrides = parse_issue_body_overrides(env('JM_PAGES_ISSUE_BODY'))
     mode = overrides.get('mode', mode)
     keep = overrides.get('keep', keep)
+    source = overrides.get('source', source)
+    limit = overrides.get('limit', limit)
 
     docs_dir = os.path.abspath(env('JM_PAGES_DOCS_DIR', './docs'))
     impl = env('CLIENT_IMPL')
 
-    aid = parse_album_id(raw_input)
-    log(f'解析车号: JM{aid}，模式: {mode}，保留: {keep}')
-
-    if env('JM_PAGES_MOCK') == '1':
-        meta, raw_dir = mock_download(aid)
+    if source != 'jm':
+        # issue 触发时 INPUT 是标题（带 [jm] 前缀），先剥离
+        beta_target = re.sub(r'^\s*\[jm\]\s*', '', raw_input, flags=re.IGNORECASE).strip()
+        log(f'内测爬取: source={source}，目标: {beta_target}，章节数: {limit}，模式: {mode}')
+        sys.path.insert(0, SCRIPT_DIR)
+        from beta_crawler import crawl
+        meta, raw_dir = crawl(source, beta_target, default_raw_dir(), limit)
     else:
-        meta, raw_dir = crawl_album(aid, impl)
+        aid = parse_album_id(raw_input)
+        log(f'解析车号: JM{aid}，模式: {mode}，保留: {keep}')
+        if env('JM_PAGES_MOCK') == '1':
+            meta, raw_dir = mock_download(aid)
+        else:
+            meta, raw_dir = crawl_album(aid, impl)
 
     entry = build_site(meta, raw_dir, docs_dir, mode)
-    apply_retention(docs_dir, keep, protect_id=aid)
+    apply_retention(docs_dir, keep, protect_id=meta['id'])
     write_summary(entry)
+
+    # 输出最终书架ID，供工作流回复 issue 时拼链接
+    output_file = env('GITHUB_OUTPUT')
+    if output_file:
+        with open(output_file, 'a', encoding='utf-8') as f:
+            f.write(f'shelf_id={entry["id"]}\n')
 
     # 清理原始下载目录，避免被误提交
     if os.path.isdir(raw_dir) and os.path.abspath(raw_dir).startswith(os.path.abspath('./build')):

@@ -8,8 +8,23 @@ on:
     inputs:
       JM_ID:
         type: string
-        description: '本子链接或ID（如 https://18comic.vip/album/1483616/... 或 1483616）'
+        description: '链接或ID（JM 车号/链接；内测平台填对应漫画链接或ID）'
         required: true
+
+      SOURCE:
+        description: '平台（内测功能，其他平台爬取为实验性）'
+        type: choice
+        default: 'JMComic'
+        options:
+          - 'JMComic'
+          - 'MangaDex（内测）'
+          - '拷贝漫画（内测）'
+          - 'nhentai（内测）'
+
+      BETA_LIMIT:
+        type: number
+        description: '内测平台爬取章节数（仅 SOURCE 非 JMComic 时生效，最多 10）'
+        default: 3
 
       MODE:
         description: '产物模式'
@@ -50,6 +65,8 @@ jobs:
     env:
       JM_PAGES_INPUT: ${{ github.event.inputs.JM_ID || github.event.issue.title }}
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
+      JM_PAGES_SOURCE_INPUT: ${{ github.event.inputs.SOURCE }}
+      JM_PAGES_LIMIT: ${{ github.event.inputs.BETA_LIMIT || 3 }}
       JM_PAGES_KEEP: ${{ github.event.inputs.KEEP_LATEST || 10 }}
       JM_PAGES_ISSUE_BODY: ${{ github.event.issue.body }}
       CLIENT_IMPL: ${{ github.event.inputs.CLIENT_IMPL }}
@@ -73,7 +90,7 @@ jobs:
           pip install -e ./
           pip install psutil # usage_log 插件依赖
 
-      - name: 解析产物模式
+      - name: 解析产物模式与平台
         run: |
           case "$JM_PAGES_MODE_INPUT" in
             *仅在线阅览*) mode=read ;;
@@ -81,9 +98,17 @@ jobs:
             *) mode=both ;;
           esac
           echo "JM_PAGES_MODE=$mode" >> $GITHUB_ENV
-          echo "产物模式: $mode"
+          case "$JM_PAGES_SOURCE_INPUT" in
+            *MangaDex*) source=mangadex ;;
+            *拷贝漫画*) source=copymanga ;;
+            *nhentai*) source=nhentai ;;
+            *) source=jm ;;
+          esac
+          echo "JM_PAGES_SOURCE=$source" >> $GITHUB_ENV
+          echo "产物模式: $mode，平台: $source"
 
       - name: 下载本子并生成站点数据
+        id: build
         run: |
           python usage/workflow_pages_build.py
 
@@ -109,8 +134,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PAGES_BASE: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          AID: ${{ steps.build.outputs.shelf_id }}
         run: |
-          AID=$(python -c "import sys; sys.path.insert(0, 'usage'); from workflow_pages_build import parse_album_id, env; print(parse_album_id(env('JM_PAGES_INPUT')))")
-          BODY=$(printf '✅ 爬取完成，站点部署约 1~2 分钟后生效：\n\n- 📚 书架：%s/\n- 📖 在线阅读：%s/reader.html?id=%s\n- 📦 打包下载：%s/comics/%s/JM%s.zip\n\n（如 404 请稍等片刻并刷新）' "$PAGES_BASE" "$PAGES_BASE" "$AID" "$PAGES_BASE" "$AID" "$AID")
+          BODY=$(printf '✅ 爬取完成，站点部署约 1~2 分钟后生效：\n\n- 📚 书架：%s/\n- 📖 在线阅读：%s/reader.html?id=%s\n- 📦 打包下载：%s/comics/%s/\n\n（如 404 请稍等片刻并刷新）' "$PAGES_BASE" "$PAGES_BASE" "$AID" "$PAGES_BASE" "$AID")
           gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body "$BODY"
           gh issue close "$ISSUE_NUMBER" --repo "${{ github.repository }}" || true
