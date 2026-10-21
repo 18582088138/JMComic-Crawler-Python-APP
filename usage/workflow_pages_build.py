@@ -8,10 +8,13 @@
     → 重新装配 gh-pages（前端 + 全站数据聚合）→ Pages 自动部署
 
 环境变量输入：
-    JM_PAGES_INPUT      目标链接或ID（必填），任意已支持站点；纯数字默认 JMComic 车号
+    JM_PAGES_INPUT      目标链接或ID（必填），任意已支持站点；纯数字默认 JMComic 车号。
+                        特殊值 __cleanup__：不爬取，按 KEEP 对所有站点执行保留清理
     JM_PAGES_SOURCE     平台：auto（默认，自动识别）或注册 key（jmcomic/mangadex/...）
     JM_PAGES_MODE       产物模式：both（默认）/ read / zip
-    JM_PAGES_KEEP       每站书库最多保留几本（默认 10）
+    JM_PAGES_KEEP       每站书库最多保留几本（默认 30）。
+                        正常爬取时宽限到 KEEP+10 才硬删（给前端「下载或清理」提示留出时间窗），
+                        __cleanup__ 任务按 KEEP 精确清理
     JM_PAGES_LIMIT      章节数上限（多章节站点生效，默认 3，单章站点忽略）
     JM_PAGES_ISSUE_BODY issue 触发时传入正文，支持 mode:/keep:/source:/limit: 覆盖
     JM_PAGES_MOCK       置 1 时不联网，生成模拟图片并写入 JM_PAGES_DOCS_DIR（本地调试用）
@@ -40,6 +43,7 @@ from crawlers.base import log  # noqa: E402
 from crawlers.generic import GenericCrawlFailed  # noqa: E402
 
 LEGACY_SOURCE = {'jm': 'jmcomic'}
+RETENTION_GRACE = 10  # 宽限期：正常爬取只在超过 KEEP+10 时硬删，KEEP..KEEP+10 之间由用户决定
 
 
 def env(name, default=''):
@@ -147,6 +151,32 @@ def report_status(status, target, source, **extra):
     branch_store.write_last_run(obj)
 
 
+def cleanup_all_sites(keep):
+    """__cleanup__ 维护任务：对所有 data 分支按 keep 精确清理并重新装配"""
+    branches = branch_store.list_data_branches(REPO_DIR)
+    if not branches:
+        log('没有任何 data 分支，无需清理')
+        return
+    for branch in branches:
+        site = branch.split('/', 1)[1]
+        site_dir = os.path.join(REPO_DIR, 'build', 'site_worktree')
+        branch_store.open_branch_worktree(REPO_DIR, branch, site_dir)
+        try:
+            before = len(site_builder.read_index(site_dir).get('comics', []))
+            if before <= keep:
+                log(f'{site}: {before} 本，无需清理')
+                continue
+            site_builder.apply_retention(site_dir, keep, protect_id=None)
+            after = len(site_builder.read_index(site_dir).get('comics', []))
+            log(f'{site}: {before} → {after} 本')
+            docs_dir = os.path.join(REPO_DIR, 'docs')
+            branch_store.publish(REPO_DIR, site, site_dir, docs_dir, push=True,
+                                 message=f'data: [{site}] 保留清理至 {keep} 本')
+        finally:
+            branch_store.close_worktree(REPO_DIR, site_dir)
+    log('清理任务完成')
+
+
 def cleanup_raw(raw_dir):
     if raw_dir and os.path.isdir(raw_dir) and os.path.abspath(raw_dir).startswith(os.path.abspath('./build')):
         shutil.rmtree(raw_dir, ignore_errors=True)
@@ -162,7 +192,7 @@ def main():
     mode = env('JM_PAGES_MODE', 'both').lower()
     if mode not in ('both', 'read', 'zip'):
         mode = 'both'
-    keep = int(env('JM_PAGES_KEEP', '10') or '10')
+    keep = int(env('JM_PAGES_KEEP', '30') or '30')
     source = normalize_source(env('JM_PAGES_SOURCE', 'auto'))
     limit = int(env('JM_PAGES_LIMIT', '3') or '3')
 
@@ -175,6 +205,12 @@ def main():
     raw_dir = os.path.abspath(env('JM_PAGES_RAW_DIR', './build/pages_raw'))
     mock = env('JM_PAGES_MOCK') == '1'
     publish = env('JM_PAGES_PUBLISH', '1') != '0'
+
+    # ---------- 保留清理维护任务 ----------
+    if raw_input.strip() == '__cleanup__':
+        log(f'保留清理任务: 每站精确清理至 {keep} 本')
+        cleanup_all_sites(keep)
+        return
 
     # ---------- mock：本地构建调试，不碰分支 ----------
     if mock:
@@ -216,9 +252,11 @@ def main():
         branch_store.open_branch_worktree(REPO_DIR, f'data/{site}', site_dir)
         try:
             entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
-            site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
+            # 宽限期保留：超过 keep+GRACE 才硬删，keep..keep+GRACE 之间由前端提示用户「下载或清理」
+            site_builder.apply_retention(site_dir, keep + RETENTION_GRACE, protect_id=meta['id'])
             docs_dir = os.path.join(REPO_DIR, 'docs')
             branch_store.publish(REPO_DIR, site, site_dir, docs_dir, push=True,
+                                 changed_id=entry['id'],
                                  message=f'data: [{site}] +{entry["id"]}')
         finally:
             branch_store.close_worktree(REPO_DIR, site_dir)

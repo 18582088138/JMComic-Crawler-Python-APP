@@ -45,6 +45,7 @@ class ManhuaguiCrawler(CrawlerBase):
     name = '漫画柜'
     id_prefix = 'mg-'
     home = 'https://www.manhuagui.com'
+    mirrors = ['https://www.mhgui.com', 'https://tw.manhuagui.com']
     hint = '漫画链接（manhuagui.com/comic/<id>）或章节链接，默认爬最新几章'
     color = '#3b82f6'
     url_patterns = [r'manhuagui\.com/comic/']

@@ -60,6 +60,7 @@ class CrawlerBase:
     name = ''            # 显示名，如 'MangaDex'
     id_prefix = ''       # 书架 ID 前缀，如 'md-'（JMComic 例外：纯数字无前缀）
     home = ''            # 站点主页（找本子跳转）
+    mirrors = []         # 备用域名（找本子页展示，主域名被墙时用）
     hint = ''            # 输入提示（前端占位符/帮助）
     color = '#888888'    # 站点主题色（前端站点徽章）
     url_patterns = []    # re 正则列表，命中任一即认为该输入属于本站（auto 识别用）

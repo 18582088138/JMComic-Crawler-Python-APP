@@ -18,6 +18,7 @@ class NhentaiCrawler(CrawlerBase):
     name = 'nhentai'
     id_prefix = 'nh-'
     home = 'https://nhentai.net'
+    mirrors = ['https://nhentai.to', 'https://nhentai.xxx']
     hint = '画廊号或链接（nhentai.net/g/<id>），整本单章'
     color = '#ec2753'
     url_patterns = [r'nhentai\.(?:net|to|xxx)/g/']

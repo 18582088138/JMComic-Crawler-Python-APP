@@ -25,7 +25,7 @@ class BikaCrawler(CrawlerBase):
     name = '哔咔漫画'
     id_prefix = 'bk-'
     home = 'https://www.picacomic.com'
-    hint = '漫画ID（24位十六进制，App 分享链接里可找到），默认爬最新几章'
+    hint = '无网页版：漫画ID 需从哔咔 App 分享链接获取（24位十六进制），默认爬最新几章'
     color = '#f472b6'
     url_patterns = [r'picacomic\.com/']
 

@@ -42,6 +42,10 @@ class GenericCrawler(CrawlerBase):
         m = re.search(r'https?://[^\s<>"\']+', text)
         if m:
             return m.group(0)
+        # 裸域名链接自动补协议头（www.xxx.com/...）
+        m = re.search(r'([\w-]+(?:\.[\w-]+)+(?::\d+)?/[^\s<>"\']*)', text)
+        if m:
+            return 'https://' + m.group(1)
         raise ValueError('通用兜底需要一个 http(s) 链接')
 
     def fetch_meta(self, url, limit):

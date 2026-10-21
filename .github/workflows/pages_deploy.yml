@@ -11,6 +11,11 @@ on:
       - '!docs/comics/**'
       - '!docs/data/**'
   workflow_dispatch:
+    inputs:
+      REASSEMBLE:
+        description: '全量重装配 gh-pages（从所有 data 分支校准；修复装配失败/数据异常）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -33,10 +38,18 @@ jobs:
           python-version: "3.11"
 
       - name: 同步前端到 gh-pages
+        if: github.event.inputs.REASSEMBLE != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python usage/deploy_frontend.py
+
+      - name: 全量重装配 gh-pages
+        if: github.event.inputs.REASSEMBLE == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python usage/reassemble_pages.py
 
       # GITHUB_TOKEN 推送 gh-pages 不会自动触发 Pages 构建（GitHub 限制），需显式请求
       - name: 触发 Pages 部署

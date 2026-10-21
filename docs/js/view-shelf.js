@@ -1,5 +1,6 @@
-/* 「书架」分页：站点筛选 + 喜欢置顶 + 分页 + 阅读/下载 + 离线角标 */
+/* 「书架」分页：站点筛选 + 喜欢置顶 + 分页 + 阅读/下载 + 离线角标 + 满库清理 */
 import { $, $$, toast, esc, relTime, store, siteOf, siteMeta } from './util.js';
+import { detectRepo, dispatchWorkflow, repoInfo, newIssueUrl } from './github.js';
 
 const PAGE_SIZE = 12;
 let shelfData = [];
@@ -24,6 +25,96 @@ function visibleComics() {
   // 喜欢的排在前面（同组内保持更新时间倒序）
   return list.slice().sort((a, b) =>
     (favs.has(String(b.id)) ? 1 : 0) - (favs.has(String(a.id)) ? 1 : 0));
+}
+
+/* ---------- 满库清理（超出保留数的本子提示「下载或清理」） ---------- */
+function keepLimit() {
+  return Math.max(1, Math.min(99, parseInt(store.get('keep', 30), 10) || 30));
+}
+
+function overflowBooks() {
+  const keep = keepLimit();
+  const bySite = {};
+  shelfData.forEach(c => {
+    const s = c.site || siteOf(c.id);
+    (bySite[s] = bySite[s] || []).push(c);
+  });
+  const overflow = [];
+  for (const list of Object.values(bySite)) {
+    list.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    overflow.push(...list.slice(keep)); // 索引已按更新时间倒序，超出 keep 的都是待清理
+  }
+  return overflow;
+}
+
+function renderOverflowBanner() {
+  let banner = $('#overflowBanner');
+  const overflow = overflowBooks();
+  if (!overflow.length) {
+    if (banner) banner.style.display = 'none';
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'overflowBanner';
+    banner.className = 'card warn-banner';
+    const tools = document.querySelector('#view-shelf .shelftools');
+    tools.parentNode.insertBefore(banner, tools.nextSibling);
+  }
+  const keep = keepLimit();
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <h2><span class="dot" style="background:var(--warn)"></span>书架已满</h2>
+    <div class="hint">${overflow.length} 本旧本子超出保留数（每站 ${keep} 本）。
+    可先把它们下载到本地，再点「确认清理」从书架删除；若不理会，超出 ${keep}+10 宽限后会被自动硬删。</div>
+    <div class="overflow-list">${overflow.map(c => {
+      const zipName = c.zipName || ('JM' + c.id + '.zip');
+      return `<div class="orow">
+        <span class="ot" title="${esc(c.title)}">${esc(c.title)}</span>
+        <span class="os">${esc(siteMeta(c.site || siteOf(c.id)).name)}</span>
+        ${c.hasZip ? `<a class="odl" href="comics/${encodeURIComponent(c.id)}/${encodeURIComponent(zipName)}" download>📦 下载</a>` : '<span class="os">无ZIP</span>'}
+      </div>`;
+    }).join('')}</div>
+    <button class="bigbtn" id="cleanupBtn">🧹 确认清理这 ${overflow.length} 本</button>`;
+  $('#cleanupBtn').addEventListener('click', function () { submitCleanup(this); });
+}
+
+function submitCleanup(btn) {
+  const repo = detectRepo();
+  if (!repo) { location.hash = '#/settings'; toast('请先在设置中填写仓库地址'); return; }
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  const restore = () => { btn.disabled = false; renderOverflowBanner(); };
+  const token = store.get('token', '');
+  const onSubmitted = () => {
+    toast('清理任务已提交，约 1~2 分钟生效', 3000);
+    // 90 秒后自动刷新书架确认结果
+    setTimeout(() => { loadShelf(); }, 90000);
+  };
+  if (token) {
+    dispatchWorkflow(repo, {
+      TARGET: '__cleanup__', SOURCE: 'auto', LIMIT: '3',
+      MODE: '在线阅览 + 打包下载', KEEP_LATEST: String(keepLimit()), CLIENT_IMPL: '',
+    }).then(status => {
+      restore();
+      if (status === 204) onSubmitted();
+      else if (status === 401 || status === 403) toast('Token 无效或权限不足');
+      else if (status === 422) toast('触发失败(422)：请强制刷新页面后重试');
+      else toast('触发失败：HTTP ' + status);
+    }).catch(() => { restore(); toast('网络错误'); });
+  } else {
+    repoInfo(repo).then(info => {
+      restore();
+      if (info && info.has_issues === false) {
+        toast('仓库未开启 Issues，请按设置页清单开启，或改用 Token 提交', 4500);
+        location.hash = '#/settings';
+        return;
+      }
+      window.open(newIssueUrl(repo, '[jm] __cleanup__',
+        'keep: ' + keepLimit() + '\n\n保留清理任务，由书架「确认清理」引导创建。'), '_blank');
+      onSubmitted();
+    }).catch(() => { restore(); toast('网络异常'); });
+  }
 }
 
 function renderFilter() {
@@ -136,6 +227,7 @@ export function loadShelf() {
       }
       renderFilter();
       renderShelf();
+      renderOverflowBanner();
     })
     .catch(() => {
       box.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="art">🛠️</div>

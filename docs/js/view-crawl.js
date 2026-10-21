@@ -22,7 +22,18 @@ function detectSite(text) {
   text = (text || '').trim();
   if (!text) return null;
   for (const d of DETECT) if (d.re.test(text)) return d.site;
-  return /^https?:\/\//i.test(text) ? 'generic' : null;
+  // http(s) 链接或裸域名链接都走通用兜底
+  if (/^https?:\/\//i.test(text) || /^[\w-]+(\.[\w-]+)+(:\d+)?(\/|$)/.test(text)) return 'generic';
+  return null;
+}
+
+/* 裸域名链接（www.xxx.com/...）自动补 https:// */
+function normalizeTarget(text) {
+  text = (text || '').trim();
+  if (!/^https?:\/\//i.test(text) && /^[\w-]+(\.[\w-]+)+(:\d+)?\//.test(text)) {
+    return 'https://' + text;
+  }
+  return text;
 }
 
 function refreshChip() {
@@ -63,7 +74,7 @@ function buildSourceSeg() {
 }
 
 function submitCurrent(btn) {
-  const target = $('#targetInput').value.trim();
+  const target = normalizeTarget($('#targetInput').value);
   if (!target) { toast('请先输入漫画链接或ID'); $('#targetInput').focus(); return; }
   const repo = detectRepo();
   if (!repo) { location.hash = '#/settings'; toast('请先在设置中填写仓库地址'); return; }
@@ -71,6 +82,7 @@ function submitCurrent(btn) {
   let source = currentSource();
   if (source === 'auto') source = detectSite(target) || 'auto';
   const limit = Math.max(1, Math.min(10, parseInt($('#limitInput').value, 10) || 3));
+  const keep = Math.max(1, Math.min(99, parseInt(store.get('keep', 30), 10) || 30));
 
   btn.disabled = true;
   const label = btn.textContent;
@@ -81,7 +93,8 @@ function submitCurrent(btn) {
   if (token) {
     dispatchWorkflow(repo, {
       TARGET: target, SOURCE: source === 'generic' ? 'auto' : source,
-      LIMIT: String(limit), MODE: MODE_LABEL[mode], KEEP_LATEST: 10, CLIENT_IMPL: '',
+      LIMIT: String(limit), MODE: MODE_LABEL[mode],
+      KEEP_LATEST: String(keep), CLIENT_IMPL: '',  // ⚠️ inputs 全部必须是字符串，否则 GitHub 返回 422
     }).then(status => {
       done();
       if (status === 204) {
@@ -94,6 +107,7 @@ function submitCurrent(btn) {
         $('#taskCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else if (status === 404) toast('触发失败(404)：请检查仓库名与 Token 权限');
       else if (status === 401 || status === 403) toast('Token 无效或权限不足（需要 Actions 读写权限）');
+      else if (status === 422) toast('触发失败(422)：工作流已更新，请强制刷新页面（清缓存）后重试');
       else toast('触发失败：HTTP ' + status);
     }).catch(() => { done(); toast('网络错误，无法连接 GitHub API'); });
   } else {

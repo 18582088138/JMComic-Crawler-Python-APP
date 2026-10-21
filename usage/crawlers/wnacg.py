@@ -20,6 +20,7 @@ class WnacgCrawler(CrawlerBase):
     name = 'wnacg'
     id_prefix = 'wn-'
     home = 'https://www.wnacg.com'
+    mirrors = ['https://www.wnacg.org']
     hint = '画廊链接（wnacg.com/photos-index-aid-<id>.html）或数字ID，整本单章'
     color = '#a855f7'
     url_patterns = [r'wnacg\.\w+/photos-']

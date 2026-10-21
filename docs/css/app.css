@@ -163,6 +163,10 @@ a{color:var(--ac2);text-decoration:none}
 .sitegrid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}
 @media(min-width:560px){.sitegrid{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:960px){.sitegrid{grid-template-columns:repeat(3,1fr)}}
+.sitecell{display:flex;flex-direction:column;gap:0}
+.mirrors{display:flex;gap:10px;padding:6px 10px 0 16px;flex-wrap:wrap}
+.mirrors a{font-size:.64rem;color:var(--txt3);text-decoration:underline;text-underline-offset:2px}
+.mirrors a:active{color:var(--ac2)}
 .sitecard{
   display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;cursor:pointer;
   background:var(--card);border:1px solid var(--line);transition:.22s;position:relative;overflow:hidden;
@@ -275,6 +279,17 @@ a{color:var(--ac2);text-decoration:none}
 .wempty{font-size:.76rem;color:var(--txt3);padding:10px 0;line-height:1.7}
 
 .foot{text-align:center;color:var(--txt3);font-size:.66rem;margin-top:30px;line-height:1.8}
+
+/* ---------- 满库清理横幅 ---------- */
+.warn-banner{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.05);margin-top:0;margin-bottom:14px}
+.overflow-list{margin-top:10px;max-height:220px;overflow-y:auto}
+.orow{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid rgba(255,255,255,.05)}
+.orow:last-child{border-bottom:none}
+.orow .ot{flex:1;min-width:0;font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.orow .os{font-size:.62rem;color:var(--txt3);flex:none}
+.orow .odl{flex:none;font-size:.68rem;font-weight:700;color:var(--ac2);text-decoration:none;
+  border:1px solid var(--line);border-radius:8px;padding:4px 8px;background:var(--card2)}
+.warn-banner .bigbtn{background:linear-gradient(135deg,#f59e0b,#f97316);box-shadow:0 6px 20px rgba(245,158,11,.3)}
 
 /* ---------- toast ---------- */
 #toast{

@@ -12,7 +12,7 @@ on:
     inputs:
       TARGET:
         type: string
-        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）'
+        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。填 __cleanup__ 则执行保留清理'
         required: true
 
       SOURCE:
@@ -46,8 +46,8 @@ on:
 
       KEEP_LATEST:
         type: number
-        description: '该站书库最多保留几本（超出自动清理最旧的）'
-        default: 10
+        description: '该站书库最多保留几本（超出后书架提示「下载或清理」；宽限 +10 后硬删）'
+        default: 30
 
       CLIENT_IMPL:
         type: string
@@ -76,7 +76,7 @@ jobs:
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
       JM_PAGES_SOURCE: ${{ github.event.inputs.SOURCE || 'auto' }}
       JM_PAGES_LIMIT: ${{ github.event.inputs.LIMIT || 3 }}
-      JM_PAGES_KEEP: ${{ github.event.inputs.KEEP_LATEST || 10 }}
+      JM_PAGES_KEEP: ${{ github.event.inputs.KEEP_LATEST || 30 }}
       JM_PAGES_ISSUE_BODY: ${{ github.event.issue.body }}
       CLIENT_IMPL: ${{ github.event.inputs.CLIENT_IMPL }}
       JM_USERNAME: ${{ secrets.JM_USERNAME }}

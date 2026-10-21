@@ -25,6 +25,7 @@ class DmzjCrawler(CrawlerBase):
     name = '动漫之家'
     id_prefix = 'dz-'
     home = 'https://manhua.dmzj.com'
+    mirrors = ['https://m.dmzj.com']
     hint = '漫画链接（manhua.dmzj.com/<拼音名>）或数字漫画ID，默认爬最新几章'
     color = '#0ea5e9'
     url_patterns = [r'(?:manhua\.)?dmzj\.com/', r'muwai\.com/comic/']

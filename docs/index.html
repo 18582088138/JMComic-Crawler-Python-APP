@@ -88,7 +88,7 @@
   <section class="view" id="view-find">
     <div class="card">
       <h2><span class="dot"></span>找本子</h2>
-      <div class="hint">已收录的站点一览，点卡片跳转对应站点浏览；找到喜欢的本子后复制链接，回「爬取」页粘贴即可</div>
+      <div class="hint">点卡片跳转站点浏览，<b>长按卡片复制站点地址</b>（方便粘贴到其他浏览器打开）；标注「需代理」的站点国内网络打不开属正常现象，云端爬取不受影响。找到喜欢的本子后复制链接，回「爬取」页粘贴即可</div>
       <div class="sitegrid" id="siteGrid"></div>
     </div>
   </section>
@@ -131,6 +131,13 @@
           都不填时，爬取将改用「提 Issue」方式提交。
         </div>
         <input type="password" id="tokenInput" placeholder="粘贴 ghp_... / github_pat_...">
+
+        <b class="sec-title">书架保留数量（每个站点）</b>
+        <div class="limitrow" style="margin-top:0">
+          每站最多保留
+          <input type="number" id="keepInput" value="30" min="1" max="99">
+          <span>超出后书架会提示「下载或清理」；防爆仓硬上限为保留数+10</span>
+        </div>
 
         <b class="sec-title">首次使用检查清单</b>
         <ol>

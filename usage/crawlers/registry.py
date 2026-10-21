@@ -74,6 +74,7 @@ def registered_sites():
             'key': cls.site,
             'name': cls.name,
             'home': cls.home,
+            'mirrors': list(cls.mirrors),
             'hint': cls.hint,
             'color': cls.color,
             'prefix': cls.id_prefix,

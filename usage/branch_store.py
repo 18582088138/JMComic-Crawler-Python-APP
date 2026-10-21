@@ -44,6 +44,17 @@ def remote_branch_exists(repo, branch):
     return git_ok('ls-remote', '--exit-code', '--heads', 'origin', branch, cwd=repo)
 
 
+def list_data_branches(repo):
+    """列出远端所有 data/<site> 分支名"""
+    out = git('ls-remote', '--heads', 'origin', 'data/*', cwd=repo)
+    branches = []
+    for line in out.splitlines():
+        m = line.split('refs/heads/', 1)
+        if len(m) == 2 and m[1].startswith('data/'):
+            branches.append(m[1])
+    return sorted(set(branches))
+
+
 def open_branch_worktree(repo, branch, dest):
     """把远端分支（可能不存在）以 worktree 形式打开到 dest，返回是否已有远端内容"""
     if os.path.isdir(dest):
@@ -104,10 +115,11 @@ def sync_frontend(repo, pages_dir, docs_dir):
             shutil.copytree(src, dest)
 
 
-def sync_site_comics(site_dir, pages_dir, site):
+def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
     """把某站 worktree 的内容同步进 gh-pages worktree：
 
-    - 覆盖/新增该站 comics/<id>
+    - 覆盖/新增该站 comics/<id>（only_ids 给定时只同步这些，其余保持不动——
+      增量同步避免每次构建复制全站数据；全量校准用 reassemble_pages.py）
     - 删除该站已下架（retention 清掉）的 comics/<id>
     - 更新 data/index-<site>.json 与聚合 data/comics.json
     """
@@ -132,8 +144,9 @@ def sync_site_comics(site_dir, pages_dir, site):
             shutil.rmtree(target)
             log(f'gh-pages: 移除已下架 {cid}')
 
+    copy_ids = new_ids if only_ids is None else (new_ids & set(only_ids))
     src_comics = os.path.join(site_dir, 'comics')
-    for cid in new_ids:
+    for cid in copy_ids:
         src = os.path.join(src_comics, str(cid))
         dest = os.path.join(pages_dir, 'comics', str(cid))
         if not os.path.isdir(src):
@@ -171,8 +184,11 @@ def rebuild_merged_index(pages_dir):
                   f, ensure_ascii=False, indent=2)
 
 
-def publish(repo, site, site_dir, docs_dir, push=True, message=None):
-    """完整发布：data/<site> 分支提交 → gh-pages 重新装配 → 均 force-push"""
+def publish(repo, site, site_dir, docs_dir, push=True, message=None, changed_id=None):
+    """完整发布：data/<site> 分支提交 → gh-pages 重新装配 → 均 force-push
+
+    changed_id：本次新建/重建的本子 id，gh-pages 侧只增量复制它（下架目录照常删除）。
+    """
     message = message or f'data: 更新 {site} 书库'
     changed = commit_and_push(site_dir, f'data/{site}', message, push=push)
 
@@ -180,7 +196,8 @@ def publish(repo, site, site_dir, docs_dir, push=True, message=None):
     existed = open_branch_worktree(repo, PAGES_BRANCH, pages_dir)
     try:
         sync_frontend(repo, pages_dir, docs_dir)
-        sync_site_comics(site_dir, pages_dir, site)
+        sync_site_comics(site_dir, pages_dir, site,
+                         only_ids=None if not existed else ({changed_id} if changed_id else set()))
         if not existed:
             log('gh-pages 分支不存在，已初始化为完整站点')
         commit_and_push(pages_dir, PAGES_BRANCH, f'pages: 装配 {site} 更新', push=push)

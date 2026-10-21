@@ -5,6 +5,7 @@ window.SITES = [
     "key": "mangadex",
     "name": "MangaDex",
     "home": "https://mangadex.org",
+    "mirrors": [],
     "hint": "漫画链接（mangadex.org/title/<id>）或章节链接，也支持直接填 id",
     "color": "#ff6740",
     "prefix": "md-",
@@ -16,6 +17,10 @@ window.SITES = [
     "key": "nhentai",
     "name": "nhentai",
     "home": "https://nhentai.net",
+    "mirrors": [
+      "https://nhentai.to",
+      "https://nhentai.xxx"
+    ],
     "hint": "画廊号或链接（nhentai.net/g/<id>），整本单章",
     "color": "#ec2753",
     "prefix": "nh-",
@@ -27,6 +32,10 @@ window.SITES = [
     "key": "manhuagui",
     "name": "漫画柜",
     "home": "https://www.manhuagui.com",
+    "mirrors": [
+      "https://www.mhgui.com",
+      "https://tw.manhuagui.com"
+    ],
     "hint": "漫画链接（manhuagui.com/comic/<id>）或章节链接，默认爬最新几章",
     "color": "#3b82f6",
     "prefix": "mg-",
@@ -38,6 +47,9 @@ window.SITES = [
     "key": "dmzj",
     "name": "动漫之家",
     "home": "https://manhua.dmzj.com",
+    "mirrors": [
+      "https://m.dmzj.com"
+    ],
     "hint": "漫画链接（manhua.dmzj.com/<拼音名>）或数字漫画ID，默认爬最新几章",
     "color": "#0ea5e9",
     "prefix": "dz-",
@@ -49,6 +61,9 @@ window.SITES = [
     "key": "wnacg",
     "name": "wnacg",
     "home": "https://www.wnacg.com",
+    "mirrors": [
+      "https://www.wnacg.org"
+    ],
     "hint": "画廊链接（wnacg.com/photos-index-aid-<id>.html）或数字ID，整本单章",
     "color": "#a855f7",
     "prefix": "wn-",
@@ -60,6 +75,7 @@ window.SITES = [
     "key": "ehentai",
     "name": "E-Hentai",
     "home": "https://e-hentai.org",
+    "mirrors": [],
     "hint": "画廊链接（e-hentai.org/g/<gid>/<token>），整本单章",
     "color": "#ede0d4",
     "prefix": "eh-",
@@ -71,7 +87,8 @@ window.SITES = [
     "key": "bika",
     "name": "哔咔漫画",
     "home": "https://www.picacomic.com",
-    "hint": "漫画ID（24位十六进制，App 分享链接里可找到），默认爬最新几章",
+    "mirrors": [],
+    "hint": "无网页版：漫画ID 需从哔咔 App 分享链接获取（24位十六进制），默认爬最新几章",
     "color": "#f472b6",
     "prefix": "bk-",
     "singleChapter": false,
@@ -82,6 +99,7 @@ window.SITES = [
     "key": "jmcomic",
     "name": "JMComic",
     "home": "https://18comic.vip",
+    "mirrors": [],
     "hint": "本子链接（18comic.vip/album/<车号>）或直接输入车号",
     "color": "#ff5c8a",
     "prefix": "",
