@@ -37,10 +37,19 @@
 - 相同内容的 blob 在 git 对象库只存一份，data 分支与 gh-pages 不重复占空间。
 - 已注册站点：`jmcomic`（JM 纯数字车号）、`mangadex`、`nhentai`、`manhuagui`、`dmzj`、`wnacg`、`ehentai`、`bika`；兜底 `generic` 不落分支。
 - 书架 ID 带站点前缀（`md-`/`nh-`/`mg-`/`dz-`/`wn-`/`eh-`/`bk-`），JM 沿用纯数字，互不冲突。
+- **装配是增量的**：每次爬取只向 gh-pages 复制本次构建的那本（下架目录照常删除），
+  不整站复制；全量校准用 `usage/reassemble_pages.py`
+  （pages_deploy.yml 的 `REASSEMBLE=true` 触发，用于修复装配中途失败等异常）。
+- **保留策略（30/宽限 10）**：正常爬取只在该站超过 `KEEP+10` 时硬删；
+  超出 `KEEP` 未满 `KEEP+10` 的本子由书架页横幅提示「下载或清理」，
+  用户确认后 dispatch `TARGET=__cleanup__`（Token 或 issue `[jm] __cleanup__` 均可）
+  对所有站点按 KEEP 精确清理。
 
 **已知限制**：GITHUB_TOKEN 推送 gh-pages **不会自动触发 Pages 构建**（GitHub 限制），
 两个工作流都在推送后显式 `POST /repos/{repo}/pages/builds` 请求部署（含失败路径：
 `last_run.json`/`wishlist.json` 是 Contents API 直写 gh-pages 的，同样需要部署才可见）。
+gh-pages 装配需拉取全量工作区（随总量增长会变慢）；数据涨到 GB 级后可改
+`--filter=blob:none` + sparse-checkout 优化。
 
 ## 3. 文件结构与职责
 
@@ -139,16 +148,18 @@ Actions Workflow permissions = write；Issues = 开启。
 - **新站点（漫画柜/动漫之家/wnacg/E-Hentai/哔咔）按公开爬虫通行做法编写，本地被墙未逐站实测**；
   哪个站报错先看 Actions 日志，多半是页面结构/API 变动，改对应 crawler 即可
 - GITHUB_TOKEN 推 gh-pages 不触发 Pages 构建，必须显式 POST /pages/builds
+- **workflow_dispatch 的 inputs 值必须全部是字符串**：传数字 GitHub 返回 422
+  `Invalid value for input 'KEEP_LATEST'`（2026-10-21 前端全站 422 的根因）
 - 纯数字输入一律按 JMComic 车号处理（历史约定）；nhentai 等数字 ID 站点请贴链接或显式选平台
 
 ## 6. Roadmap
 
-- ~~P0 仓库体积~~：已解决（孤立分支 + 单 commit force-push，见 §2）
+- ~~P0 仓库体积~~：已解决（孤立分支 + 单 commit force-push，见 §2）；
+  **2026-10-21 master 历史已用 filter-repo 重写**（`--path docs/comics --path docs/data
+  --invert-paths --refs master`），旧图片 blob 已脱离引用，GitHub 端 GC 后体积回落
 - ~~P1 失败可见性~~：已解决（`data/last_run.json` + 页面展示 + issue 失败回评）
 - ~~P2 免 Token 一键授权~~：已否决（Device Flow 无 CORS），以预填 PAT 链接替代
 - ~~P3 离线~~：已解决（SW cache-first + 全本缓存按钮）
 - 新站点按公开实现编写，待逐站云端实测校准（漫画柜的 packer 解包、dmzj 的 muwai API、
   哔咔的签名、wnacg 的 /data/t/ 变换、E-Hentai 的配额限速是重点观察项）
-- 历史遗留：master 早期提交仍含旧图片 blob（约 200MB），如需彻底瘦身可择期
-  filter-repo 重写 master 历史（破坏性操作，需全量重新 fork/clone）
 - 待研究：拷贝漫画 API 稳定后重新启用（代码保留在 `usage/crawlers/copymanga.py`）
