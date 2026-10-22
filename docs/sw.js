@@ -42,6 +42,20 @@ function inScope(url, seg) {
   return isSameOrigin(url) && url.pathname.includes('/' + seg + '/');
 }
 
+/* 书架删除本子时，同步清除其离线图片缓存 */
+self.addEventListener('message', e => {
+  const data = e.data || {};
+  if (data.type === 'purge' && Array.isArray(data.ids)) {
+    e.waitUntil((async () => {
+      const cache = await caches.open(COMIC_CACHE);
+      const keys = await cache.keys();
+      await Promise.all(keys
+        .filter(req => data.ids.some(id => req.url.includes('/comics/' + id + '/')))
+        .map(req => cache.delete(req)));
+    })());
+  }
+});
+
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;

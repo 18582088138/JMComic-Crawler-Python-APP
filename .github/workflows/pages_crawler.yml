@@ -12,8 +12,14 @@ on:
     inputs:
       TARGET:
         type: string
-        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。填 __cleanup__ 则执行保留清理'
+        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。__cleanup__=保留清理，__delete__=按 DELETE_IDS 删除'
         required: true
+
+      DELETE_IDS:
+        type: string
+        description: '要删除的书架ID（逗号分隔，仅 TARGET=__delete__ 时生效）'
+        default: ''
+        required: false
 
       SOURCE:
         description: '平台（auto = 按链接自动识别）'
@@ -74,6 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       JM_PAGES_INPUT: ${{ github.event.inputs.TARGET || github.event.issue.title }}
+      JM_PAGES_DELETE_IDS: ${{ github.event.inputs.DELETE_IDS }}
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
       JM_PAGES_SOURCE: ${{ github.event.inputs.SOURCE || 'auto' }}
       JM_PAGES_BATCH: ${{ github.event.inputs.BATCH || 1 }}

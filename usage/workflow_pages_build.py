@@ -153,6 +153,52 @@ def report_status(status, target, source, **extra):
     branch_store.write_last_run(obj)
 
 
+def parse_delete_ids(raw):
+    """逗号/空格/换行分隔的书架 ID 列表；只接受安全字符"""
+    ids = []
+    for part in re.split(r'[\s,，、]+', raw or ''):
+        part = part.strip()
+        if part and re.fullmatch(r'[\w%.-]+', part):
+            ids.append(part)
+    return list(dict.fromkeys(ids))
+
+
+def delete_books(ids):
+    """__delete__ 维护任务：跨 data 分支按 ID 删除本子并重新装配"""
+    if not ids:
+        raise ValueError('__delete__ 但没有提供有效的书架 ID')
+    remaining = list(ids)
+    branches = branch_store.list_data_branches(REPO_DIR)
+    for branch in branches:
+        if not remaining:
+            break
+        site = branch.split('/', 1)[1]
+        site_dir = os.path.join(REPO_DIR, 'build', 'site_worktree')
+        branch_store.open_branch_worktree(REPO_DIR, branch, site_dir)
+        try:
+            idx = site_builder.read_index(site_dir)
+            hits = [c for c in idx.get('comics', []) if c.get('id') in remaining]
+            if not hits:
+                continue
+            for c in hits:
+                cid = c['id']
+                target = os.path.join(site_dir, 'comics', str(cid))
+                if os.path.isdir(target):
+                    shutil.rmtree(target)
+                idx['comics'].remove(c)
+                remaining.remove(cid)
+                log(f'删除: [{site}] {cid}《{c.get("title", "")[:40]}》')
+            site_builder.write_index(site_dir, idx)
+            docs_dir = os.path.join(REPO_DIR, 'docs')
+            branch_store.publish(REPO_DIR, site, site_dir, docs_dir, push=True,
+                                 message=f'data: [{site}] 删除 {len(hits)} 本')
+        finally:
+            branch_store.close_worktree(REPO_DIR, site_dir)
+    if remaining:
+        log(f'以下 ID 未在任何 data 分支找到，跳过: {remaining}')
+    log('删除任务完成')
+
+
 def cleanup_all_sites(keep):
     """__cleanup__ 维护任务：对所有 data 分支按 keep 精确清理并重新装配"""
     branches = branch_store.list_data_branches(REPO_DIR)
@@ -212,6 +258,17 @@ def main():
     if raw_input.strip() == '__cleanup__':
         log(f'保留清理任务: 每站精确清理至 {keep} 本')
         cleanup_all_sites(keep)
+        return
+
+    # ---------- 指定删除维护任务 ----------
+    if raw_input.strip() == '__delete__':
+        delete_ids = env('JM_PAGES_DELETE_IDS')
+        m = re.search(r'(?im)^\s*delete\s*[:：]\s*(.+)$', env('JM_PAGES_ISSUE_BODY'))
+        if m:
+            delete_ids = (delete_ids + ' ' + m.group(1)).strip()
+        ids = parse_delete_ids(delete_ids)
+        log(f'删除任务: {len(ids)} 本 {ids}')
+        delete_books(ids)
         return
 
     # ---------- mock：本地构建调试，不碰分支 ----------

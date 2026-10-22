@@ -8,6 +8,9 @@ let siteCounts = {};
 let filter = 'all';
 let page = 1;
 let favs = new Set(store.get('favs', []));
+let selecting = false;      // 选择模式
+let selected = new Set();   // 已选中的书架 ID
+let deleteArmed = false;    // 删除二次确认状态
 
 function toggleFav(id) {
   id = String(id);
@@ -193,9 +196,21 @@ function renderShelf() {
     el.addEventListener('click', e => {
       if (e.target.closest('a,button')) return;
       const c = all.find(x => String(x.id) === el.dataset.id);
+      if (!c) return;
+      if (selecting) {
+        toggleSelect(c.id, el);
+        return;
+      }
       // 点开进作品详情（目录清单），阅读按钮仍直达阅读器
-      if (c) location.hash = '#/book/' + encodeURIComponent(c.id);
+      location.hash = '#/book/' + encodeURIComponent(c.id);
     });
+    // 选择模式下的勾选框
+    if (selecting) {
+      el.classList.add('selectable');
+      el.classList.toggle('selected', selected.has(String(c.id)));
+    } else {
+      el.classList.remove('selectable', 'selected');
+    }
   });
 
   // 分页器
@@ -237,7 +252,124 @@ export function loadShelf() {
     });
 }
 
+/* ---------- 选择模式与批量删除 ---------- */
+function toggleSelect(id, el) {
+  id = String(id);
+  if (selected.has(id)) selected.delete(id); else selected.add(id);
+  el.classList.toggle('selected', selected.has(id));
+  updateSelBar();
+}
+
+function setSelecting(on) {
+  selecting = on;
+  selected.clear();
+  deleteArmed = false;
+  document.body.classList.toggle('shelf-selecting', on);
+  const btn = $('#manageShelf');
+  if (btn) btn.textContent = on ? '取消' : '管理';
+  renderShelf();
+  updateSelBar();
+}
+
+function updateSelBar() {
+  let bar = $('#selBar');
+  if (!selecting) {
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'selBar';
+    document.body.appendChild(bar);
+  }
+  bar.style.display = 'flex';
+  const n = selected.size;
+  bar.innerHTML = `
+    <button class="sb-item" id="selAllBtn">${n && n === visibleComics().length ? '全不选' : '全选'}</button>
+    <span class="sb-count">已选 ${n} 本</span>
+    <button class="sb-item sb-del" id="delSelBtn" ${n ? '' : 'disabled'}>${deleteArmed ? `确认删除 ${n} 本？` : '🗑 删除'}</button>
+    <button class="sb-item" id="selCancelBtn">取消</button>`;
+  $('#selAllBtn').addEventListener('click', () => {
+    const all = visibleComics();
+    if (selected.size === all.length) selected.clear();
+    else all.forEach(c => selected.add(String(c.id)));
+    renderShelf();
+    updateSelBar();
+  });
+  $('#selCancelBtn').addEventListener('click', () => setSelecting(false));
+  $('#delSelBtn').addEventListener('click', function () {
+    if (!selected.size) return;
+    if (!deleteArmed) {
+      deleteArmed = true;
+      updateSelBar();
+      setTimeout(() => { if (deleteArmed) { deleteArmed = false; updateSelBar(); } }, 5000);
+      return;
+    }
+    submitDelete(this);
+  });
+}
+
+function submitDelete(btn) {
+  const repo = detectRepo();
+  if (!repo) { location.hash = '#/settings'; toast('请先在设置中填写仓库地址'); return; }
+  const ids = Array.from(selected);
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  const restore = () => { btn.disabled = false; updateSelBar(); };
+  const onSubmitted = () => {
+    toast(`删除任务已提交（${ids.length} 本），约 1~2 分钟生效`, 3500);
+    // 本地同步清理：进度/离线标记/收藏 + SW 图片缓存
+    ids.forEach(id => {
+      localStorage.removeItem('jm_prog_' + id);
+      localStorage.removeItem('jm_offline_' + id);
+      favs.delete(String(id));
+    });
+    store.set('favs', Array.from(favs));
+    purgeSWCache(ids);
+    setSelecting(false);
+    setTimeout(() => { loadShelf(); }, 90000);
+  };
+  const token = store.get('token', '');
+  if (token) {
+    dispatchWorkflow(repo, {
+      TARGET: '__delete__', DELETE_IDS: ids.join(','), SOURCE: 'auto', BATCH: '1',
+      MODE: '在线阅览 + 打包下载', KEEP_LATEST: String(keepLimit()), CLIENT_IMPL: '',
+    }).then(status => {
+      restore();
+      if (status === 204) onSubmitted();
+      else if (status === 401 || status === 403) toast('Token 无效或权限不足');
+      else if (status === 422) toast('触发失败(422)：请强制刷新页面后重试');
+      else toast('触发失败：HTTP ' + status);
+    }).catch(() => { restore(); toast('网络错误'); });
+  } else {
+    repoInfo(repo).then(info => {
+      restore();
+      if (info && info.has_issues === false) {
+        toast('仓库未开启 Issues，请按设置页清单开启，或改用 Token 提交', 4500);
+        location.hash = '#/settings';
+        return;
+      }
+      window.open(newIssueUrl(repo, '[jm] __delete__',
+        'delete: ' + ids.join(',') + '\n\n删除任务，由书架批量删除引导创建。'), '_blank');
+      onSubmitted();
+    }).catch(() => { restore(); toast('网络异常'); });
+  }
+}
+
+/* 通知 SW 清除被删本子的离线图片缓存 */
+function purgeSWCache(ids) {
+  try {
+    const msg = { type: 'purge', ids };
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage(msg);
+    } else if (navigator.serviceWorker) {
+      navigator.serviceWorker.ready.then(reg => reg.active && reg.active.postMessage(msg)).catch(() => {});
+    }
+  } catch (e) { /* 缓存清理失败不影响主流程 */ }
+}
+
 export function initShelfView() {
+  $('#manageShelf').addEventListener('click', () => setSelecting(!selecting));
   $('#prevPage').addEventListener('click', () => { if (page > 1) { page--; renderShelf(); } });
   $('#nextPage').addEventListener('click', () => { page++; renderShelf(); });
   $('#refreshShelf').addEventListener('click', () => { loadShelf(); toast('已刷新'); });
