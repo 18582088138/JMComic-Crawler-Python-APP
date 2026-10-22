@@ -59,7 +59,7 @@ gh-pages 装配需拉取全量工作区（随总量增长会变慢）；数据�
 | --- | --- |
 | `usage/crawlers/base.py` | 爬虫基类：统一 meta 契约、模板方法 `crawl()`、图片下载 |
 | `usage/crawlers/registry.py` | 站点注册表 + `detect_crawler()` 自动识别 + 统一入口 `crawl()` |
-| `usage/crawlers/<site>.py` | 每站一个爬虫类（jmcomic/mangadex/nhentai/manhuagui/dmzj/wnacg/ehentai/bika；copymanga 保留未注册） |
+| `usage/crawlers/<site>.py` | 每站一个爬虫类（jmcomic/mangadex/nhentai/manhuagui/mkzhan/wnacg/ehentai/bika；simple_cms 为 CMS 系通用基类；copymanga/mangabz/mheee/baozimh/kuaikan/dmzj 代码保留已下架，见 §6） |
 | `usage/crawlers/generic.py` | 通用兜底：script JSON 数组 / img 目录分组两种启发式；失败抛 `GenericCrawlFailed` |
 | `usage/site_builder.py` | 站点数据构建：图片/封面/manifest/zip/index.json upsert/retention |
 | `usage/branch_store.py` | 分支存储层：worktree 打开/单 commit force-push/gh-pages 装配/Contents API 小文件 |
@@ -77,7 +77,8 @@ gh-pages 装配需拉取全量工作区（随总量增长会变慢）；数据�
 | `js/app.js` | hash 路由（`#/crawl` 等）+ 启动 |
 | `js/view-crawl.js` | 爬取页：平台自动识别 chip、手动指定、任务提交（Token dispatch / Issue 兜底）、进度跟踪、最近失败展示 |
 | `js/view-find.js` | 找本子页：每站一张卡片跳转站点主页 |
-| `js/view-shelf.js` | 书架页：站点筛选、喜欢置顶、分页（12/页）、阅读/ZIP 下载、离线角标 |
+| `js/view-shelf.js` | 书架页：站点筛选、喜欢置顶、分页（12/页）、满库清理横幅 |
+| `js/view-book.js` | 作品详情页（`#/book/<id>`）：目录清单、续读、抓取更多章节（预填下一批）、ZIP 下载、源站链接 |
 | `js/view-settings.js` | 设置页：仓库/Token/检查清单/愿望清单 |
 | `js/task.js` / `js/github.js` / `js/util.js` | 任务状态机 / GitHub API / 工具 |
 | `js/sites-data.js` | **由 export_sites.py 生成，勿手改** |
@@ -87,29 +88,36 @@ gh-pages 装配需拉取全量工作区（随总量增长会变慢）；数据�
 
 ## 4. 核心链路
 
-### 4.1 爬取管线
+### 4.1 爬取管线（v2：批次化 + 章节合并）
 
 ```
-输入(任意站点链接/ID) → detect_crawler 自动识别(或显式 source)
-  → crawler.crawl() → meta + raw_dir          （JM 复用 jmcomic 库整本下载）
+输入(任意站点链接/ID + 批次号) → detect_crawler 自动识别(或显式 source)
+  → crawler.crawl(batch) → meta + raw_dir     （多章节站点 20 章/批，从第 1 章起算；
+                                                JM 复用 jmcomic 库整本下载不分批）
   → site_builder.build_site() → data/<site> worktree:
-        comics/<id>/images/<章>/NNN.<原后缀>
+        comics/<id>/images/<photo_id>/NNN.<原后缀>   (章节稳定 key，跨爬取不变)
         comics/<id>/cover.jpg   (首页缩到480宽)
-        comics/<id>/manifest.json
-        comics/<id>/<id>.zip    (ZIP_STORED；JM 沿用 JM<id>.zip 命名)
+        comics/<id>/manifest.json   (含 totalChapters/sourceUrl/order)
+        comics/<id>/<id>.zip    (ZIP_STORED 合包，含全部已合并章节)
         index.json              (该站索引 upsert，最新在前)
-        retention: 每站超出 KEEP_LATEST 的旧本子整目录删除
+        retention: 超过 KEEP+10 硬删（宽限内由书架提示「下载或清理」）
   → data/<site> 单 commit force-push
-  → gh-pages 装配：同步前端 + 同步该站 comics + 聚合 data/comics.json
+  → gh-pages 装配：同步前端 + 增量同步该站 comics + 聚合 data/comics.json
   → gh-pages 单 commit force-push → POST /pages/builds → 部署
 ```
+
+**多话作品按「一本」管理**：同一作品的多次批次爬取按 `photo_id` 合并章节——
+第 1 批（1-20 章）与第 2 批（21-40 章）累积成书架上的一个条目；
+作品详情页（`#/book/<id>`）展示「已上架 x/N 章」与目录清单，
+「抓取更多章节」按钮自动预填下一批次。阅读进度按章节 key 记录（合并重排后不失效）。
+旧版 v1 manifest（images/<序号>/ 布局）的章节在合并时原样保留，新老共存。
 
 ### 4.2 任务提交（三条通路，同旧版）
 
 1. **一键创建经典 PAT（推荐）**：设置页按钮直达预填 `public_repo` 的创建页，30 秒完成。
 2. **Fine-grained PAT**：权限可窄到单仓库 Actions 读写，需手动勾选。
 3. **Issue 兜底**：`[jm] <目标>` 标题触发 `issues` 事件，成功自动回评关单，失败也回评。
-   正文支持 `mode:/source:/limit:/keep:` 覆盖项。
+   正文支持 `mode:/source:/batch:/keep:` 覆盖项。
 > 已否决：OAuth Device Flow（`github.com/login/*` 端点无 CORS，纯前端不可行）。
 
 ### 4.3 状态与愿望清单（P1）
@@ -165,6 +173,17 @@ Actions Workflow permissions = write；Issues = 开启。
 - ~~P1 失败可见性~~：已解决（`data/last_run.json` + 页面展示 + issue 失败回评）
 - ~~P2 免 Token 一键授权~~：已否决（Device Flow 无 CORS），以预填 PAT 链接替代
 - ~~P3 离线~~：已解决（SW cache-first + 全本缓存按钮）
-- 新站点按公开实现编写，待逐站云端实测校准（漫画柜的 packer 解包、dmzj 的 muwai API、
-  哔咔的签名、wnacg 的 /data/t/ 变换、E-Hentai 的配额限速是重点观察项）
-- 待研究：拷贝漫画 API 稳定后重新启用（代码保留在 `usage/crawlers/copymanga.py`）
+- ~~多话按本管理 + 批次爬取 + 作品详情页~~：已解决（见 §4.1，2026-10-22 线上实测：
+  MangaDex 两批次合并 36/96 章、顺序正确、章节 key 稳定）
+- 站点云端校准结果（2026-10-22，5 轮探测）：
+  - ✅ **mkzhan**：`comic.mkzhan.com/chapter/content/?comic_id=&chapter_id=` API 可用；
+    **限制：目录接口需登录**，SSR 详情页只见第一章，更多章节需直接贴章节页链接
+  - ❌ mangabz：章节图在外部混淆 JS（chapter.js/newyb.js），通用抽取只拿到 5 张噪音图
+  - ❌ mheee：详情页章节结构未解，且多次探测后触发 403
+  - ❌ baozimh：Cloudflare 级 403（主域与 cn.bzmgcn.com 均封数据中心 IP）
+  - ❌ copymanga：v3 API 全部域名 404/无法连接，确已消亡
+  - ❌ kuaikan：SPA，已知端点全 404，SSR 无章节数据
+  - 以上 5 站代码保留在 `usage/crawlers/`（registry 注释中有说明），破解后重新注册即可
+- 待校准（早前实现，未逐站验证）：漫画柜 packer 解包、wnacg /data/t/ 变换、
+  E-Hentai 配额限速、哔咔签名、nhentai 镜像回退
+- mkzhan 目录 API 待破解（`chapter/show` 报"用户标识不能为空"，可能需要 App token）
