@@ -231,18 +231,18 @@ class MangabzCrawler(SimpleCmsCrawler):
     image_host = 'https://i.mangabz.com'
 
     def get_chapter_image_urls(self, chapter_ref):
-        try:
-            return super().get_chapter_image_urls(chapter_ref)
-        except CrawlError:
-            # 图片数据在外部 JS（chapter.js / newyb.js）里，抓出来看结构（校准用）
-            for js in ('https://css.mangabz.com/v202609180933/mangabz/js/chapter.js',
-                       'https://css.mangabz.com/v202609180933/mangabz/js/newyb.js'):
-                try:
-                    r = self.session.get(js, timeout=20)
-                    log(f'{self.name}: 外部JS {js.split("/")[-1]} → {r.status_code}: {r.text[:700]!r}')
-                except Exception as e:
-                    log(f'{self.name}: 外部JS 获取失败 {js} → {e}')
-            raise
+        urls = super().get_chapter_image_urls(chapter_ref)
+        if urls:
+            return urls
+        # 图片数据在外部 JS（chapter.js / newyb.js）里，抓出来看结构（校准用）
+        for js in ('https://css.mangabz.com/v202609180933/mangabz/js/chapter.js',
+                   'https://css.mangabz.com/v202609180933/mangabz/js/newyb.js'):
+            try:
+                r = self.session.get(js, timeout=20)
+                log(f'{self.name}: 外部JS {js.split("/")[-1]} → {r.status_code}: {r.text[:700]!r}')
+            except Exception as e:
+                log(f'{self.name}: 外部JS 获取失败 {js} → {e}')
+        return urls
 
 
 class MheeeCrawler(SimpleCmsCrawler):
