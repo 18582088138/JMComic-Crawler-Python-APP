@@ -61,10 +61,24 @@ class ManhuaguiCrawler(CrawlerBase):
             return f'{m.group(1)}:{m.group(2) or ""}'
         if text.isdigit():
             return f'{text}:'
+        m = re.search(r"(https?://(?:www\.)?manhuagui\.com[^\s<>\"']*)", text)
+        if m:
+            return f'home:{m.group(1)}'  # 非详情页链接：自动发现第一本
         raise ValueError(f'无法识别漫画柜目标: {text}')
 
+    def discover_first(self, page_url):
+        resp = self.session.get(page_url, timeout=30)
+        m = re.search(r'/comic/(\d+)/', resp.text)
+        if not m:
+            raise CrawlError('漫画柜自动发现失败：页面没有漫画链接')
+        log(f'漫画柜自动发现 → comic/{m.group(1)}')
+        return m.group(1)
+
     def fetch_meta(self, target, batch):
-        cid, ccid = target.split(':', 1)
+        if target.startswith('home:'):
+            cid, ccid = self.discover_first(target[5:]), ''
+        else:
+            cid, ccid = target.split(':', 1)
         resp = self.session.get(f'https://www.manhuagui.com/comic/{cid}/', timeout=30)
         if resp.status_code != 200:
             raise CrawlError(f'漫画柜详情页返回 HTTP {resp.status_code}')

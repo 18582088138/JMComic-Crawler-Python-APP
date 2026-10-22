@@ -37,6 +37,9 @@ class WnacgCrawler(CrawlerBase):
             return m.group(1)
         if text.isdigit():
             return text
+        m = re.search(r"(https?://(?:www\.)?wnacg\.\w+[^\s<>\"']*)", text)
+        if m:
+            return f'home:{m.group(1)}'  # 非画廊链接：自动发现第一本
         raise ValueError(f'无法识别 wnacg 目标: {text}')
 
     def _get(self, path):
@@ -54,6 +57,13 @@ class WnacgCrawler(CrawlerBase):
         raise CrawlError(f'wnacg 全部镜像不可用（最后错误: {last}）')
 
     def fetch_meta(self, aid, batch):
+        if aid.startswith('home:'):
+            resp = self.session.get(aid[5:], timeout=30)
+            m = re.search(r'aid-(\d+)\.html', resp.text)
+            if not m:
+                raise CrawlError('wnacg 自动发现失败：页面没有画廊链接')
+            log(f'wnacg 自动发现 → aid-{m.group(1)}')
+            aid = m.group(1)
         base, html = self._get(f'/photos-index-aid-{aid}.html')
         tm = re.search(r'<h2[^>]*>([^<]+)</h2>', html) or re.search(r'<title>([^<|]+)', html)
         title = tm.group(1).strip() if tm else f'wnacg {aid}'

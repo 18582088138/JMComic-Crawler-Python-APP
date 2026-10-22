@@ -34,7 +34,22 @@ class BikaCrawler(CrawlerBase):
         m = re.search(r'\b([0-9a-f]{24})\b', text)
         if m:
             return m.group(1)
-        raise ValueError(f'无法识别哔咔目标: {text}（需要 24 位十六进制漫画ID）')
+        if text.lower() in ('hot', '最新', '榜', ''):
+            return 'hot:'
+        raise ValueError(f'无法识别哔咔目标: {text}（需要 24 位十六进制漫画ID，或输 hot 抓最新榜首本）')
+
+    def discover_first(self):
+        """榜单/最新列表 → 第一本漫画ID（校准用，也方便用户尝鲜）"""
+        for path in ('comics?page=1&sort=dd', 'comics?page=1&sort=ld', 'comics?page=1'):
+            try:
+                data = self._signed_get(path)
+                docs = (data.get('comics') or {}).get('docs') or []
+                if docs:
+                    log(f'哔咔自动发现 →《{docs[0].get("title")}》({docs[0].get("_id")}) via {path}')
+                    return docs[0]['_id']
+            except CrawlError as e:
+                log(f'哔咔列表端点 {path} 失败: {e}')
+        raise CrawlError('哔咔自动发现失败：列表端点均不可用')
 
     def _signed_get(self, path_query):
         """path_query 形如 'comics/<id>/eps?page=1'（不含 host 与前导斜杠）"""
@@ -63,6 +78,8 @@ class BikaCrawler(CrawlerBase):
         return resp.json()
 
     def fetch_meta(self, cid, batch):
+        if cid == 'hot:':
+            cid = self.discover_first()
         info = self._signed_get(f'comics/{cid}')
         comic = info.get('comic') or info
         title = comic.get('title') or f'哔咔 {cid}'

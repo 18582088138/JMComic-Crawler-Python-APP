@@ -31,9 +31,19 @@ class EhentaiCrawler(CrawlerBase):
         m = re.search(r'e-hentai\.org/g/(\d+)/([0-9a-f]{8,12})', text)
         if m:
             return f'{m.group(1)}/{m.group(2)}'
+        m = re.search(r"(https?://e-hentai\.org[^\s<>\"']*)", text)
+        if m:
+            return f'home:{m.group(1)}'  # 非画廊链接：自动发现第一本
         raise ValueError(f'无法识别 E-Hentai 目标: {text}（需要完整画廊链接，含 token 段）')
 
     def fetch_meta(self, target, batch):
+        if target.startswith('home:'):
+            resp = self.session.get(target[5:], timeout=30)
+            m = re.search(r'e-hentai\.org/g/(\d+)/([0-9a-f]{8,12})/?', resp.text)
+            if not m:
+                raise CrawlError('E-Hentai 自动发现失败：页面没有画廊链接')
+            log(f'E-Hentai 自动发现 → g/{m.group(1)}/{m.group(2)}')
+            target = f'{m.group(1)}/{m.group(2)}'
         gid, token = target.split('/', 1)
         gallery_url = f'{BASE}/g/{gid}/{token}/'
         resp = self.session.get(gallery_url, timeout=30)
