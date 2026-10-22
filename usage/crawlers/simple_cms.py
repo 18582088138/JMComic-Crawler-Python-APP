@@ -138,15 +138,30 @@ class SimpleCmsCrawler(CrawlerBase):
     def _dump_debug(self, html, url):
         """抽图失败时把页面线索打进日志（云端校准用）"""
         log(f'{self.name}: 抽图失败，页面调试信息 {url}（HTML {len(html)} 字符）')
+        for src in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html):
+            log(f'  script-src: {src[:160]}')
         for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
             block = m.group(1).strip()
             if not block:
                 continue
-            if re.search(r'(jpg|jpeg|png|webp|files|images|pic|chapter)', block, re.IGNORECASE):
-                log(f'  script[{len(block)}]: {block[:400]!r}')
+            if re.search(r'(jpg|jpeg|png|webp|files|images|pic|chapter|comic_id|api|ajax)',
+                         block, re.IGNORECASE):
+                log(f'  script[{len(block)}]: {block[:900]!r}')
         imgs = re.findall(r'<img[^>]+>', html)
         for tag in imgs[:5]:
             log(f'  img: {tag[:200]}')
+
+    def probe_endpoints(self, desc, urls):
+        """尝试候选 API 端点并记录状态（云端校准用），返回第一个 200 且像 JSON 的响应"""
+        for u in urls:
+            try:
+                r = self.session.get(u, timeout=20)
+                log(f'{self.name}: 端点尝试[{desc}] {u} → {r.status_code} {r.text[:150]!r}')
+                if r.status_code == 200 and r.text.strip().startswith(('{', '[')):
+                    return r.text
+            except Exception as e:
+                log(f'{self.name}: 端点尝试[{desc}] {u} → {e}')
+        return None
 
     def save_image(self, url, path):
         # 默认以章节页为 Referer（多数图床校验）
@@ -243,7 +258,38 @@ class MkzhanCrawler(SimpleCmsCrawler):
     id_prefix = 'mkz-'
     home = 'https://www.mkzhan.com'
     host = 'www.mkzhan.com'
-    hint = '漫画链接（mkzhan.com 详情页或章节页），默认第 1 批 20 章'
+    hint = '漫画链接（mkzhan.com/<数字ID>/），默认第 1 批 20 章'
     color = '#8b5cf6'
     url_patterns = [r'mkzhan\.com/']
     image_host = 'https://cdn.mkzhan.com'
+
+    def get_chapter_image_urls(self, chapter_ref):
+        resp = self.session.get(chapter_ref['url'], timeout=30)
+        if resp.status_code != 200:
+            raise CrawlError(f'{self.name}章节页返回 HTTP {resp.status_code}')
+        html = resp.text
+        url = str(getattr(resp, 'url', None) or chapter_ref['url'])
+        self._chapter_url = url
+
+        # 页面内 comic_id / chapter_id
+        comic_id = (re.search(r'comic_id["\'\s:=]+["\']?(\d+)', html)
+                    or re.search(r'mkzhan\.com/(\d+)/', url))
+        chapter_id = (re.search(r'chapter_id["\'\s:=]+["\']?(\d+)', html)
+                      or re.search(r'mkzhan\.com/\d+/(\d+)\.html', url))
+        cid = comic_id.group(1) if comic_id else ''
+        chid = chapter_id.group(1) if chapter_id else ''
+        if cid and chid:
+            text = self.probe_endpoints('mkzhan-images', [
+                f'https://comic.mkzhan.com/chapter/content/?comic_id={cid}&chapter_id={chid}',
+                f'https://www.mkzhan.com/chapter/getChapterImages?comic_id={cid}&chapter_id={chid}',
+                f'https://comic-api.mkzhan.com/chapter/info?comic_id={cid}&chapter_id={chid}',
+                f'https://www.mkzhan.com/api/chapter/{cid}/{chid}',
+            ])
+            if text:
+                urls = re.findall(r'https?://[^"\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\s]*)?', text)
+                urls = [u for i, u in enumerate(urls) if u not in urls[:i]]
+                if len(urls) >= 3:
+                    log(f'{self.name}: API 命中 {len(urls)} 页')
+                    return urls
+        # 回退通用策略
+        return super().get_chapter_image_urls(chapter_ref)

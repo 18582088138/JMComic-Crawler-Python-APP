@@ -27,7 +27,76 @@ class KuaikanCrawler(SimpleCmsCrawler):
     color = '#ffd12e'
     url_patterns = [r'kuaikanmanhua\.com/']
 
+    def fetch_meta(self, target, batch):
+        # 先探官方风格的 JSON 端点（SPA 站点 SSR 里没有章节列表）
+        idm = re.search(r'/web/comic/(\d+)|/webs/comic-next/(\d+)|\b(\d{5,})\b', target)
+        comic_id = next((g for g in (idm.groups() if idm else []) if g), None)
+        if comic_id:
+            text = self.probe_endpoints('kk-chapters', [
+                f'https://www.kuaikanmanhua.com/mini/dramaturgy/comic/{comic_id}',
+                f'https://www.kuaikanmanhua.com/mini/comic/{comic_id}/chapter/list',
+                f'https://www.kuaikanmanhua.com/v2/webs/comic-next/{comic_id}/chapters',
+                f'https://www.kuaikanmanhua.com/api/comic/{comic_id}/chapters',
+            ])
+            if text:
+                meta = self._meta_from_api(text, comic_id, target, batch)
+                if meta:
+                    return meta
+        return super().fetch_meta(target, batch)
+
+    def _meta_from_api(self, text, comic_id, target, batch):
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return None
+        # 兼容几种可能的结构：找章节列表（含 id/order/title 的对象数组）
+        chapters_raw = None
+        def find_list(obj):
+            if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+                keys = set(obj[0].keys())
+                if keys & {'id', 'chapter_id'} and keys & {'title', 'name', 'chapter_title'}:
+                    return obj
+            if isinstance(obj, dict):
+                for v in obj.values():
+                    r = find_list(v)
+                    if r:
+                        return r
+            return None
+        chapters_raw = find_list(data)
+        if not chapters_raw:
+            log('快看: API 返回中未找到章节列表结构')
+            return None
+        chapters_raw.sort(key=lambda c: c.get('order', c.get('chapter_order', 0)))
+        total = len(chapters_raw)
+        wanted = self.slice_batch(list(range(total)), batch)
+        tm = re.search(r'"title"\s*:\s*"([^"]+)"', text)
+        title = tm.group(1) if tm else f'快看 {comic_id}'
+        chapters = [{'photo_id': str(c.get('id') or c.get('chapter_id')),
+                     'title': c.get('title') or c.get('name') or f'第{i + 1}章',
+                     'order': float(c.get('order', c.get('chapter_order', i + 1))),
+                     'ref': {'url': f'https://www.kuaikanmanhua.com/webs/comic-next/{comic_id}/{c.get("id") or c.get("chapter_id")}',
+                             'comic_id': comic_id,
+                             'chapter_id': str(c.get('id') or c.get('chapter_id'))}}
+                    for i, c in enumerate(chapters_raw) if i in wanted]
+        return self.make_meta(comic_id, title, [], [], f'快看 {comic_id}', chapters,
+                              total=total,
+                              source_url=f'https://www.kuaikanmanhua.com/web/comic/{comic_id}')
+
     def get_chapter_image_urls(self, chapter_ref):
+        # 有 API 候选时先试 API
+        if chapter_ref.get('chapter_id'):
+            cid, chid = chapter_ref['comic_id'], chapter_ref['chapter_id']
+            text = self.probe_endpoints('kk-images', [
+                f'https://www.kuaikanmanhua.com/mini/dramaturgy/comic/{cid}/chapter/{chid}',
+                f'https://www.kuaikanmanhua.com/mini/comic/{cid}/chapter/{chid}',
+                f'https://www.kuaikanmanhua.com/v2/webs/comic-next/{cid}/{chid}',
+            ])
+            if text:
+                urls = [u for u in IMG_RE.findall(text) if not re.search(r'(avatar|logo|icon)', u, re.IGNORECASE)]
+                urls = [u for i, u in enumerate(urls) if u not in urls[:i]]
+                if len(urls) >= 3:
+                    log(f'快看: API 命中 {len(urls)} 页')
+                    return urls
         url = chapter_ref['url']
         resp = self.session.get(url, timeout=30)
         if resp.status_code != 200:
