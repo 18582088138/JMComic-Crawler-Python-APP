@@ -7,7 +7,6 @@ import * as task from './task.js';
 const DETECT = [
   { site: 'mangadex', re: /mangadex\.org\/(?:title|chapter)\//i },
   { site: 'nhentai', re: /nhentai\.(?:net|to|xxx)\/g\//i },
-  { site: 'manhuagui', re: /manhuagui\.com\/comic\//i },
   { site: 'mkzhan', re: /mkzhan\.com\//i },
   { site: 'telegraph', re: /telegra\.ph\//i },
   { site: 'wnacg', re: /wnacg\.\w+\/photos-/i },

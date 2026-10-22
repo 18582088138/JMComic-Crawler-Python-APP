@@ -179,15 +179,16 @@ Actions Workflow permissions = write；Issues = 开启。
 - ~~P3 离线~~：已解决（SW cache-first + 全本缓存按钮）
 - ~~多话按本管理 + 批次爬取 + 作品详情页~~：已解决（见 §4.1，2026-10-22 线上实测：
   MangaDex 两批次合并 36/96 章、顺序正确、章节 key 稳定）
-- 站点云端校准结果（2026-10-22，5 轮探测）：
-  - ✅ **mkzhan**：`comic.mkzhan.com/chapter/content/?comic_id=&chapter_id=` API 可用；
-    **限制：目录接口需登录**，SSR 详情页只见第一章，更多章节需直接贴章节页链接
-  - ❌ mangabz：章节图在外部混淆 JS（chapter.js/newyb.js），通用抽取只拿到 5 张噪音图
-  - ❌ mheee：详情页章节结构未解，且多次探测后触发 403
-  - ❌ baozimh：Cloudflare 级 403（主域与 cn.bzmgcn.com 均封数据中心 IP）
-  - ❌ copymanga：v3 API 全部域名 404/无法连接，确已消亡
-  - ❌ kuaikan：SPA，已知端点全 404，SSR 无章节数据
-  - 以上 5 站代码保留在 `usage/crawlers/`（registry 注释中有说明），破解后重新注册即可
-- 待校准（早前实现，未逐站验证）：漫画柜 packer 解包、wnacg /data/t/ 变换、
-  E-Hentai 配额限速、哔咔签名、nhentai 镜像回退
+- 站点云端校准最终结果（2026-10-23，逐站真实下载验证）：
+  - ✅ 在线 7 站：jmcomic / mangadex / nhentai / mkzhan / wnacg / ehentai / telegraph
+  - ✅ **wnacg**：缩略图 /data/t/→/data/ 变换已失效（图床分离全尺寸 404），
+    改走视图页 /photos-view-id-<pid>.html 解析原图；注意 index 页 SSR 只出部分
+    视图链接（懒加载余量），多页画廊可能抓不全（待改进）
+  - ✅ **ehentai**：首页自动发现 → 匿名配额下载正常
+  - ❌ manhuagui：图床 packer 参数含转义引号，需按完整脚本重写解析（六轮校准未破）
+  - ❌ bika：API 域名现为 picaapi.picacomic.com，但旧签名密钥被服务端拒绝（401）
+  - ❌ mangabz / mheee / baozimh / copymanga / kuaikan / dmzj：见 registry.py 注释
+  - 下架站代码全部保留在 `usage/crawlers/`，破解后重新注册一行即可
+  - **首页自动发现**：manhuagui/wnacg/ehentai/bika 实现过「贴首页链接抓第一本」
+    （bika/manhuagui 下架后该能力随站停用，wnacg/ehentai 在线可用）
 - mkzhan 目录 API 待破解（`chapter/show` 报"用户标识不能为空"，可能需要 App token）

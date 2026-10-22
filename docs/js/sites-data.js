@@ -27,20 +27,6 @@ window.SITES = [
     "batchSize": 1
   },
   {
-    "key": "manhuagui",
-    "name": "漫画柜",
-    "home": "https://www.manhuagui.com",
-    "mirrors": [
-      "https://www.mhgui.com",
-      "https://tw.manhuagui.com"
-    ],
-    "hint": "漫画链接（manhuagui.com/comic/<id>）或章节链接，默认爬最新几章",
-    "color": "#3b82f6",
-    "prefix": "mg-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
     "key": "mkzhan",
     "name": "漫客栈",
     "home": "https://www.mkzhan.com",

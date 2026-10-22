@@ -11,7 +11,6 @@ from .ehentai import EhentaiCrawler
 from .generic import GenericCrawler, GenericCrawlFailed
 from .jmcomic_crawler import JmcomicCrawler
 from .mangadex import MangadexCrawler
-from .manhuagui import ManhuaguiCrawler
 from .nhentai import NhentaiCrawler
 from .simple_cms import MkzhanCrawler
 from .telegraph import TelegraphCrawler
@@ -24,12 +23,12 @@ from .wnacg import WnacgCrawler
 #   mangabz    —— 章节图在外部混淆 JS 中，通用抽取只拿到 5 张噪音图
 #   mheee      —— 章节结构未解，且多次探测后触发 403
 #   bika       —— API 域名现为 picaapi.picacomic.com（旧域名 DNS 失效），但旧签名密钥已被服务端拒绝（401 error 1005），需新版 App 密钥或登录 JWT
+#   manhuagui  —— 章节图床 packer 参数含转义引号，需按完整脚本解析（2026-10-23 六轮校准未破）
 
 # 注册顺序即 auto 识别优先级（JM 的数字车号兜底放最后单独处理）
 CRAWLER_CLASSES = [
     MangadexCrawler,
     NhentaiCrawler,
-    ManhuaguiCrawler,
     MkzhanCrawler,
     TelegraphCrawler,
     WnacgCrawler,
