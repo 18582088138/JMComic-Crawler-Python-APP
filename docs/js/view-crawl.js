@@ -9,6 +9,7 @@ const DETECT = [
   { site: 'nhentai', re: /nhentai\.(?:net|to|xxx)\/g\//i },
   { site: 'manhuagui', re: /manhuagui\.com\/comic\//i },
   { site: 'mkzhan', re: /mkzhan\.com\//i },
+  { site: 'telegraph', re: /telegra\.ph\//i },
   { site: 'wnacg', re: /wnacg\.\w+\/photos-/i },
   { site: 'ehentai', re: /e-hentai\.org\/g\//i },
   { site: 'bika', re: /picacomic\.com\/|\b[0-9a-f]{24}\b/i },

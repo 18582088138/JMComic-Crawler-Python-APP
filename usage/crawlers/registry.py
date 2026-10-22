@@ -15,6 +15,7 @@ from .mangadex import MangadexCrawler
 from .manhuagui import ManhuaguiCrawler
 from .nhentai import NhentaiCrawler
 from .simple_cms import MkzhanCrawler
+from .telegraph import TelegraphCrawler
 from .wnacg import WnacgCrawler
 
 # 已下架（代码保留待研究，见 ARCHITECTURE.md §6）：
@@ -30,6 +31,7 @@ CRAWLER_CLASSES = [
     NhentaiCrawler,
     ManhuaguiCrawler,
     MkzhanCrawler,
+    TelegraphCrawler,
     WnacgCrawler,
     EhentaiCrawler,
     BikaCrawler,

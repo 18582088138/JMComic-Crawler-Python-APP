@@ -7,6 +7,7 @@ const SITE_DESC = {
   nhentai: '同人志画廊，整本单章（需代理）',
   manhuagui: '看漫画，热门连载日漫（需代理）',
   mkzhan: '漫客栈，国漫连载',
+  telegraph: 'Telegra 即时阅读文章，整篇单章（需代理）',
   wnacg: '紳士漫畫，整本单章（需代理）',
   ehentai: 'E-Hentai 公开画廊（需代理）',
   bika: '无网页版，ID 需从 App 分享链接获取',

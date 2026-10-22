@@ -52,6 +52,17 @@ window.SITES = [
     "batchSize": 20
   },
   {
+    "key": "telegraph",
+    "name": "Telegra",
+    "home": "https://telegra.ph",
+    "mirrors": [],
+    "hint": "文章链接（telegra.ph/<标题>-<日期>），整篇单章",
+    "color": "#37aee2",
+    "prefix": "tg-",
+    "singleChapter": true,
+    "batchSize": 1
+  },
+  {
     "key": "wnacg",
     "name": "wnacg",
     "home": "https://www.wnacg.com",
