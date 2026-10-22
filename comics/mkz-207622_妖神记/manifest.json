@@ -1,0 +1,47 @@
+{
+  "id": "mkz-207622",
+  "site": "mkzhan",
+  "title": "妖神记",
+  "author": "{{ item.author_title }}",
+  "authors": [
+    "{{ item.author_title }}"
+  ],
+  "tags": [],
+  "description": "漫客栈 https://www.mkzhan.com/207622/",
+  "sourceUrl": "https://www.mkzhan.com/207622/",
+  "totalChapters": 1,
+  "updatedAt": "2026-10-22T22:48:21Z",
+  "hasReader": true,
+  "hasZip": true,
+  "zip": "mkz-207622.zip",
+  "pageCount": 14,
+  "chapterCount": 1,
+  "chapters": [
+    {
+      "photoId": "476064",
+      "title": "开始阅读",
+      "order": 1.0,
+      "pageCount": 14,
+      "pages": [
+        "mkz-207622/01_开始阅读/001.jpg",
+        "mkz-207622/01_开始阅读/002.jpg",
+        "mkz-207622/01_开始阅读/003.jpg",
+        "mkz-207622/01_开始阅读/004.jpg",
+        "mkz-207622/01_开始阅读/005.jpg",
+        "mkz-207622/01_开始阅读/006.jpg",
+        "mkz-207622/01_开始阅读/007.jpg",
+        "mkz-207622/01_开始阅读/008.jpg",
+        "mkz-207622/01_开始阅读/009.jpg",
+        "mkz-207622/01_开始阅读/010.jpg",
+        "mkz-207622/01_开始阅读/011.jpg",
+        "mkz-207622/01_开始阅读/012.jpg",
+        "mkz-207622/01_开始阅读/013.jpg",
+        "mkz-207622/01_开始阅读/014.jpg"
+      ],
+      "index": 1
+    }
+  ],
+  "parts": null,
+  "zipNote": "",
+  "dir": "mkz-207622_妖神记"
+}
