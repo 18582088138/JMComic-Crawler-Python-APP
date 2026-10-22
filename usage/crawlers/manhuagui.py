@@ -63,7 +63,7 @@ class ManhuaguiCrawler(CrawlerBase):
             return f'{text}:'
         raise ValueError(f'无法识别漫画柜目标: {text}')
 
-    def fetch_meta(self, target, limit):
+    def fetch_meta(self, target, batch):
         cid, ccid = target.split(':', 1)
         resp = self.session.get(f'https://www.manhuagui.com/comic/{cid}/', timeout=30)
         if resp.status_code != 200:
@@ -76,25 +76,32 @@ class ManhuaguiCrawler(CrawlerBase):
         authors = [a.strip() for a in (am.group(1).split(',') if am else []) if a.strip()]
 
         # 章节列表：<a href="/comic/{cid}/{ccid}.html" title="...">
-        chapters = []  # (ccid, 标题) 页面内已是正序分组，稳妥起见按出现顺序
+        all_chapters = []  # (ccid, 标题, 全量序号) 页面内已是正序分组
         seen = set()
         for href, ctitle in re.findall(
                 r'<a[^>]+href="/comic/\d+/(\d+)\.html"[^>]*title="([^"]*)"', html):
             if href in seen:
                 continue
             seen.add(href)
-            chapters.append((href, ctitle.strip()))
-        if not chapters:
+            all_chapters.append((href, ctitle.strip(), len(all_chapters) + 1))
+        if not all_chapters:
             raise CrawlError('漫画柜详情页没有解析到章节列表（页面结构可能已变化）')
+        total = len(all_chapters)
 
         if ccid:
-            wanted = [(ccid, dict(chapters).get(ccid, '单章'))]
+            title_map = {c: t for c, t, _ in all_chapters}
+            order_map = {c: o for c, _, o in all_chapters}
+            wanted = [(ccid, title_map.get(ccid, '单章'), order_map.get(ccid, 1))]
         else:
-            wanted = chapters[-limit:]
+            wanted = self.slice_batch(all_chapters, batch)
+        if not wanted:
+            raise CrawlError(f'第 {batch} 批没有章节（该作品共 {total} 章）')
 
-        meta_chapters = [{'photo_id': c, 'title': t or f'第{i + 1}章', 'ref': {'cid': cid, 'ccid': c}}
-                         for i, (c, t) in enumerate(wanted)]
-        return self.make_meta(cid, title, authors, [], f'漫画柜 comic/{cid}', meta_chapters)
+        meta_chapters = [{'photo_id': c, 'title': t or f'第{o}章', 'order': float(o),
+                          'ref': {'cid': cid, 'ccid': c}}
+                         for c, t, o in wanted]
+        return self.make_meta(cid, title, authors, [], f'漫画柜 comic/{cid}', meta_chapters,
+                              total=total, source_url=f'https://www.manhuagui.com/comic/{cid}/')
 
     def get_chapter_image_urls(self, chapter_ref):
         url = f"https://www.manhuagui.com/comic/{chapter_ref['cid']}/{chapter_ref['ccid']}.html"

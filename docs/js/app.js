@@ -1,24 +1,31 @@
 /* 应用入口：分页路由 + 启动 */
 import { $, $$ } from './util.js';
-import { initCrawlView } from './view-crawl.js';
+import { initCrawlView, applyCrawlPrefill } from './view-crawl.js';
 import { initFindView } from './view-find.js';
 import { initShelfView, loadShelf } from './view-shelf.js';
 import { initSettingsView } from './view-settings.js';
+import { initBookView, showBook } from './view-book.js';
 
-const TABS = ['crawl', 'find', 'shelf', 'settings'];
+const TABS = ['crawl', 'find', 'shelf', 'settings', 'book'];
+const NAV_TABS = ['crawl', 'find', 'shelf', 'settings'];
 
-function currentTab() {
-  const m = /^#\/(\w+)/.exec(location.hash);
-  return TABS.includes(m && m[1]) ? m[1] : 'shelf';
+function currentRoute() {
+  const m = /^#\/(\w+)(?:\/(.+))?$/.exec(location.hash);
+  const name = m && m[1];
+  return { name: TABS.includes(name) ? name : 'shelf', param: (m && m[2]) || '' };
 }
 
-function switchTab(name) {
+function switchTab(name, param) {
   TABS.forEach(t => {
     const v = $('#view-' + t);
     if (v) v.classList.toggle('on', t === name);
   });
-  $$('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  // 详情页高亮「书架」标签
+  const navActive = NAV_TABS.includes(name) ? name : 'shelf';
+  $$('.tabbar button').forEach(b => b.classList.toggle('on', b.dataset.tab === navActive));
   if (name === 'shelf') loadShelf(); // 回书架总是拿最新数据
+  if (name === 'book' && param) showBook(decodeURIComponent(param));
+  if (name === 'crawl') applyCrawlPrefill();
 }
 
 function registerSW() {
@@ -45,7 +52,10 @@ function watchOnline() {
   update();
 }
 
-window.addEventListener('hashchange', () => switchTab(currentTab()));
+window.addEventListener('hashchange', () => {
+  const r = currentRoute();
+  switchTab(r.name, r.param);
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   $$('.tabbar button').forEach(b => {
@@ -55,7 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initFindView();
   initShelfView();
   initSettingsView();
-  switchTab(currentTab());
+  initBookView();
+  const r = currentRoute();
+  switchTab(r.name, r.param);
   registerSW();
   watchOnline();
 });

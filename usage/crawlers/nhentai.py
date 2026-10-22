@@ -35,11 +35,12 @@ class NhentaiCrawler(CrawlerBase):
             return text
         raise ValueError(f'无法识别 nhentai 目标: {text}')
 
-    def fetch_meta(self, gid, limit):
+    def fetch_meta(self, gid, batch):
         media_id, title, artists, types = self._fetch_gallery(gid)
         return self.make_meta(gid, title, artists, [], f'nhentai g/{gid}',
-                              [{'photo_id': gid, 'title': '全一话',
-                                'ref': {'media_id': media_id, 'types': types}}])
+                              [{'photo_id': gid, 'title': '全一话', 'order': 1.0,
+                                'ref': {'media_id': media_id, 'types': types}}],
+                              total=1, source_url=f'https://nhentai.net/g/{gid}/')
 
     def get_chapter_image_urls(self, chapter_ref):
         media_id, types = chapter_ref['media_id'], chapter_ref['types']

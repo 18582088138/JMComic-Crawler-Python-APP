@@ -4,17 +4,19 @@
 - detect_crawler(text)：按 url_patterns 自动识别输入属于哪个站点；
   纯数字默认归 JMComic（历史约定；nhentai 等数字ID站点请贴链接或显式指定平台）。
 - crawl(source, ...)：source='auto' 时自动识别，识别不到走通用兜底。
-- copymanga 模块保留但暂不注册（API 不稳定，此前实测失败）。
+- 动漫之家已下架（站点失效）；拷贝漫画已恢复注册（mangacopy API 域名更新）。
 """
 from .base import CrawlerBase, CrawlError, log
 from .bika import BikaCrawler
-from .dmzj import DmzjCrawler
+from .copymanga import CopymangaCrawler
 from .ehentai import EhentaiCrawler
 from .generic import GenericCrawler, GenericCrawlFailed
 from .jmcomic_crawler import JmcomicCrawler
+from .kuaikan import KuaikanCrawler
 from .mangadex import MangadexCrawler
 from .manhuagui import ManhuaguiCrawler
 from .nhentai import NhentaiCrawler
+from .simple_cms import BaozimhCrawler, MangabzCrawler, MheeeCrawler, MkzhanCrawler
 from .wnacg import WnacgCrawler
 
 # 注册顺序即 auto 识别优先级（JM 的数字车号兜底放最后单独处理）
@@ -22,7 +24,12 @@ CRAWLER_CLASSES = [
     MangadexCrawler,
     NhentaiCrawler,
     ManhuaguiCrawler,
-    DmzjCrawler,
+    MangabzCrawler,
+    MheeeCrawler,
+    BaozimhCrawler,
+    MkzhanCrawler,
+    KuaikanCrawler,
+    CopymangaCrawler,
     WnacgCrawler,
     EhentaiCrawler,
     BikaCrawler,
@@ -58,10 +65,10 @@ def detect_crawler(text, session=None):
     return GenericCrawler(session=session)
 
 
-def crawl(source, target, work_dir, limit=None, session=None):
-    """统一爬取入口。source 为注册 key 或 'auto'"""
+def crawl(source, target, work_dir, batch=1, session=None):
+    """统一爬取入口。source 为注册 key 或 'auto'；batch 从 1 开始（20章/批）"""
     crawler = detect_crawler(target, session=session) if source == 'auto' else get_crawler(source, session=session)
-    meta, raw_dir = crawler.crawl(target, work_dir, limit)
+    meta, raw_dir = crawler.crawl(target, work_dir, batch)
     meta.setdefault('site', crawler.site)
     return meta, raw_dir, crawler
 
@@ -79,7 +86,6 @@ def registered_sites():
             'color': cls.color,
             'prefix': cls.id_prefix,
             'singleChapter': cls.single_chapter,
-            'defaultLimit': cls.default_limit,
-            'maxLimit': cls.max_limit if cls.max_limit < 900 else 10,
+            'batchSize': 1 if cls.single_chapter else cls.batch_size,
         })
     return sites

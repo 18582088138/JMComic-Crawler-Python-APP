@@ -1,14 +1,18 @@
 """
-站点数据构建器（与具体爬虫解耦）
+站点数据构建器 v2：多话作品按「一本」合并管理
 
-输入任一 crawler 产出的 (meta, raw_dir)，输出站点数据：
-    <site_dir>/comics/<id>/images/<章>/NNN.<原后缀>
+与 v1 的关键差异：
+- 不再整本重建：同一作品的多次批次爬取，章节按 photo_id 合并
+  （图片存 comics/<id>/images/<photo_id>/，跨爬取路径稳定）
+- manifest 记录 totalChapters（作品总章数）与 sourceUrl（源站详情页）
+- 旧版 manifest（images/<序号>/ 布局）的章节原样保留，新旧共存
+
+输出：
+    <site_dir>/comics/<id>/images/<photo_id>/NNN.<原后缀>
     <site_dir>/comics/<id>/cover.jpg        (首页缩到 480 宽)
     <site_dir>/comics/<id>/manifest.json
-    <site_dir>/comics/<id>/<id>.zip         (ZIP_STORED 快速打包)
+    <site_dir>/comics/<id>/<id>.zip         (ZIP_STORED，含全部已合并章节)
     <site_dir>/index.json                    (该站书架索引 upsert，最新在前)
-
-site_dir 通常是对应 data/<site> 分支的 worktree；本地 mock 时也可以是任意目录。
 """
 import json
 import os
@@ -45,21 +49,188 @@ def build_cover(src_image, dest, max_width=480, quality=85):
         img.save(dest, 'JPEG', quality=quality, optimize=True)
 
 
-def make_zip(raw_dir, meta, zip_path):
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_STORED) as zf:
-        for seq, ch in enumerate(meta['chapters'], 1):
-            title = re.sub(r'[\\/:*?"<>|]', '_', ch['title'])[:60].strip()
-            folder = f'{seq:02d}_{title}' if title else f'{seq:02d}'
-            for img_path in list_chapter_images(raw_dir, ch['dir_name']):
-                zf.write(img_path, f'{meta["id"]}/{folder}/{os.path.basename(img_path)}')
-
-
 def dir_size(path):
     total = 0
     for root, _dirs, files in os.walk(path):
         for f in files:
             total += os.path.getsize(os.path.join(root, f))
     return total
+
+
+def read_manifest(comic_dir):
+    path = os.path.join(comic_dir, 'manifest.json')
+    if os.path.isfile(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
+
+def chapter_key(ch):
+    return str(ch.get('photoId') or ch.get('photo_id') or ch.get('index'))
+
+
+def merge_chapters(old_chapters, new_chapters):
+    """按 photoId 合并章节，order 排序，重排 display index"""
+    merged = {}
+    for c in old_chapters or []:
+        merged[chapter_key(c)] = c
+    for c in new_chapters:
+        merged[chapter_key(c)] = c
+    chapters = list(merged.values())
+    # 旧版 manifest 章节没有 order 字段，回退用其旧 index（本身就是正确顺序）
+    chapters.sort(key=lambda c: (float(c.get('order') or c.get('index') or 0), chapter_key(c)))
+    for i, c in enumerate(chapters, 1):
+        c['index'] = i
+    return chapters
+
+
+def chapter_image_dir(comic_dir, key):
+    return os.path.join(comic_dir, 'images', str(key))
+
+
+def make_zip_merged(comic_dir, raw_dir, meta_batch, chapters, zip_path, zip_root):
+    """合包：已合并章节的图片优先取站点目录，本批次章节可回退到 raw_dir"""
+    batch_map = {str(c['photo_id']): c['dir_name'] for c in meta_batch['chapters']}
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_STORED) as zf:
+        for seq, ch in enumerate(chapters, 1):
+            title = re.sub(r'[\\/:*?"<>|]', '_', ch.get('title', ''))[:60].strip()
+            folder = f'{seq:02d}_{title}' if title else f'{seq:02d}'
+            key = chapter_key(ch)
+            src_dir = chapter_image_dir(comic_dir, key)
+            if not os.path.isdir(src_dir) and key in batch_map:
+                src_dir = os.path.join(raw_dir, batch_map[key])
+            if not os.path.isdir(src_dir):
+                continue
+            files = [f for f in os.listdir(src_dir) if os.path.isfile(os.path.join(src_dir, f))]
+            files.sort(key=natural_key)
+            for f in files:
+                zf.write(os.path.join(src_dir, f), f'{zip_root}/{folder}/{f}')
+
+
+def build_site(meta, raw_dir, site_dir, mode):
+    """把本批次下载产物合并进站点数据，返回书架索引条目"""
+    aid = meta['id']
+    site = meta.get('site') or 'jmcomic'
+    has_read = mode in ('both', 'read')
+    has_zip = mode in ('both', 'zip')
+
+    comic_dir = os.path.join(site_dir, 'comics', aid)
+    os.makedirs(comic_dir, exist_ok=True)  # v2: 不再整本删除，按章节合并
+    old = read_manifest(comic_dir)
+
+    # 1. 本批次章节落盘
+    new_chapters = []
+    first_new_image = None
+    for ch in meta['chapters']:
+        images = list_chapter_images(raw_dir, ch['dir_name'])
+        if not images:
+            log(f'警告: 章节 {ch["dir_name"]} 没有图片，跳过')
+            continue
+        if first_new_image is None:
+            first_new_image = images[0]
+        key = str(ch['photo_id'])
+        page_entries = []
+        if has_read:
+            dest_dir = chapter_image_dir(comic_dir, key)
+            if os.path.isdir(dest_dir):
+                shutil.rmtree(dest_dir)
+            os.makedirs(dest_dir)
+            for i, src in enumerate(images, 1):
+                suffix = os.path.splitext(src)[1].lower() or '.jpg'
+                dest_name = f'{i:03d}{suffix}'
+                shutil.copy2(src, os.path.join(dest_dir, dest_name))
+                page_entries.append(f'images/{key}/{dest_name}')
+        new_chapters.append({
+            'photoId': key,
+            'title': ch['title'],
+            'order': ch.get('order', 0),
+            'pageCount': len(images),
+            'pages': page_entries,
+        })
+
+    if not new_chapters and not old:
+        raise RuntimeError('没有下载到任何图片，无法生成站点数据')
+
+    # 2. 合并（旧章节原样保留，包括 v1 images/<序号>/ 布局）
+    old_chapters = (old or {}).get('chapters', [])
+    chapters = merge_chapters(old_chapters, new_chapters)
+    page_count = sum(c.get('pageCount', 0) for c in chapters)
+    total_chapters = max(int(meta.get('totalChapters') or 0),
+                         int((old or {}).get('totalChapters') or 0),
+                         len(chapters))
+
+    # 3. 封面：保留旧的；没有则用本批次首页
+    cover_path = os.path.join(comic_dir, 'cover.jpg')
+    if not os.path.isfile(cover_path):
+        src = first_new_image
+        if src is None:
+            # 从旧章节里找第一张图
+            for c in chapters:
+                if c.get('pages'):
+                    cand = os.path.join(comic_dir, c['pages'][0])
+                    if os.path.isfile(cand):
+                        src = cand
+                        break
+        if src:
+            build_cover(src, cover_path)
+
+    # 4. ZIP 合包（含全部已合并章节）
+    zip_name = f'JM{aid}.zip' if aid.isdigit() else f'{aid}.zip'
+    zip_built = False
+    if has_zip:
+        make_zip_merged(comic_dir, raw_dir, meta, chapters,
+                        os.path.join(comic_dir, zip_name), f'JM{aid}' if aid.isdigit() else aid)
+        zip_built = True
+
+    manifest = {
+        'id': aid,
+        'site': site,
+        'title': meta['title'] or (old or {}).get('title'),
+        'author': (meta['authors'][0] if meta['authors'] else None) or (old or {}).get('author') or '未知',
+        'authors': meta['authors'] or (old or {}).get('authors') or [],
+        'tags': meta['tags'] or (old or {}).get('tags') or [],
+        'description': meta['description'] or (old or {}).get('description') or '',
+        'sourceUrl': meta.get('sourceUrl') or (old or {}).get('sourceUrl') or '',
+        'totalChapters': total_chapters,
+        'updatedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'hasReader': has_read or bool(old and old.get('hasReader')),
+        'hasZip': zip_built or bool(old and old.get('hasZip') and os.path.isfile(os.path.join(comic_dir, zip_name))),
+        'zip': zip_name if (zip_built or (old and old.get('zip'))) else None,
+        'pageCount': page_count,
+        'chapterCount': len(chapters),
+        'chapters': chapters,
+    }
+    # zip-only 模式下的新章节 pages 为空（图片未落站），hasReader 以实际有 pages 的章节为准
+    if not any(c.get('pages') for c in chapters):
+        manifest['hasReader'] = False
+
+    with open(os.path.join(comic_dir, 'manifest.json'), 'w', encoding='utf-8') as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    size = dir_size(comic_dir)
+    entry = {
+        'id': aid,
+        'site': site,
+        'title': manifest['title'],
+        'author': manifest['author'],
+        'pageCount': page_count,
+        'chapterCount': len(chapters),
+        'totalChapters': total_chapters,
+        'sourceUrl': manifest['sourceUrl'],
+        'cover': f'comics/{aid}/cover.jpg',
+        'hasReader': manifest['hasReader'],
+        'hasZip': manifest['hasZip'],
+        'zipName': manifest['zip'] if manifest['hasZip'] else None,
+        'updatedAt': manifest['updatedAt'],
+        'sizeBytes': size,
+    }
+    upsert_index(site_dir, site, entry)
+    log(f'站点数据生成完毕: 《{manifest["title"]}》 已上架 {len(chapters)}/{total_chapters} 章 / '
+        f'{page_count} 页 / {size / 1024 / 1024:.1f}MB')
+    return entry
 
 
 def index_path(site_dir):
@@ -81,99 +252,6 @@ def write_index(site_dir, data):
     os.makedirs(site_dir, exist_ok=True)
     with open(index_path(site_dir), 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-def build_site(meta, raw_dir, site_dir, mode):
-    """把原始下载产物整理成站点数据，返回书架索引条目"""
-    aid = meta['id']
-    site = meta.get('site') or 'jmcomic'
-    has_read = mode in ('both', 'read')
-    has_zip = mode in ('both', 'zip')
-
-    comic_dir = os.path.join(site_dir, 'comics', aid)
-    if os.path.isdir(comic_dir):
-        shutil.rmtree(comic_dir)
-    os.makedirs(comic_dir)
-
-    manifest = {
-        'id': aid,
-        'site': site,
-        'title': meta['title'],
-        'author': meta['authors'][0] if meta['authors'] else '未知',
-        'authors': meta['authors'],
-        'tags': meta['tags'],
-        'description': meta['description'],
-        'updatedAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        'hasReader': has_read,
-        'hasZip': False,
-        'zip': None,
-        'pageCount': 0,
-        'chapterCount': len(meta['chapters']),
-        'chapters': [],
-    }
-
-    first_image = None
-    for seq, ch in enumerate(meta['chapters'], 1):
-        images = list_chapter_images(raw_dir, ch['dir_name'])
-        if not images:
-            log(f'警告: 章节 {ch["dir_name"]} 没有图片，跳过')
-            continue
-        if first_image is None:
-            first_image = images[0]
-
-        page_entries = []
-        if has_read:
-            dest_dir = os.path.join(comic_dir, 'images', str(seq))
-            os.makedirs(dest_dir)
-            for i, src in enumerate(images, 1):
-                suffix = os.path.splitext(src)[1].lower() or '.jpg'
-                dest_name = f'{i:03d}{suffix}'
-                shutil.copy2(src, os.path.join(dest_dir, dest_name))
-                page_entries.append(f'images/{seq}/{dest_name}')
-
-        manifest['chapters'].append({
-            'index': seq,
-            'photoId': ch['photo_id'],
-            'title': ch['title'],
-            'pageCount': len(images),
-            'pages': page_entries,
-        })
-        manifest['pageCount'] += len(images)
-
-    if first_image is None:
-        raise RuntimeError('没有下载到任何图片，无法生成站点数据')
-
-    build_cover(first_image, os.path.join(comic_dir, 'cover.jpg'))
-
-    if has_zip:
-        zip_name = f'JM{aid}.zip' if aid.isdigit() else f'{aid}.zip'
-        make_zip(raw_dir, meta, os.path.join(comic_dir, zip_name))
-        manifest['hasZip'] = True
-        manifest['zip'] = zip_name
-
-    manifest['sizeBytes'] = dir_size(comic_dir)
-
-    with open(os.path.join(comic_dir, 'manifest.json'), 'w', encoding='utf-8') as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-
-    entry = {
-        'id': aid,
-        'site': site,
-        'title': manifest['title'],
-        'author': manifest['author'],
-        'pageCount': manifest['pageCount'],
-        'chapterCount': manifest['chapterCount'],
-        'cover': f'comics/{aid}/cover.jpg',
-        'hasReader': has_read,
-        'hasZip': manifest['hasZip'],
-        'zipName': manifest['zip'],
-        'updatedAt': manifest['updatedAt'],
-        'sizeBytes': manifest['sizeBytes'],
-    }
-    upsert_index(site_dir, site, entry)
-    log(f'站点数据生成完毕: 《{meta["title"]}》 共 {manifest["pageCount"]} 页 / '
-        f'{manifest["chapterCount"]} 章 / {manifest["sizeBytes"] / 1024 / 1024:.1f}MB')
-    return entry
 
 
 def upsert_index(site_dir, site, entry):

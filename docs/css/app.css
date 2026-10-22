@@ -280,6 +280,42 @@ a{color:var(--ac2);text-decoration:none}
 
 .foot{text-align:center;color:var(--txt3);font-size:.66rem;margin-top:30px;line-height:1.8}
 
+/* ---------- 作品详情 ---------- */
+.bookhead{display:flex;gap:14px;padding:16px}
+.bhcover{width:96px;flex:none;aspect-ratio:3/4;border-radius:12px;overflow:hidden;background:#1a1e2a}
+.bhcover img{width:100%;height:100%;object-fit:cover;display:block}
+.bhinfo{flex:1;min-width:0}
+.bhinfo h2{font-size:.98rem;font-weight:800;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden}
+.bhmeta{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.68rem;color:var(--txt3)}
+.bhmeta i{font-style:normal}
+.bhmeta i+i::before{content:"·";margin-right:6px}
+.sitechip-static{font-size:.58rem;font-weight:800;color:#fff;padding:2px 7px;border-radius:7px;
+  background:var(--sc,#555)}
+.bhtags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.bhtags span{font-size:.62rem;color:var(--txt2);background:var(--card2);border:1px solid var(--line);
+  padding:3px 8px;border-radius:8px}
+.bookacts{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.bact{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;cursor:pointer;
+  border:1px solid var(--line);background:var(--card2);color:var(--txt);border-radius:14px;
+  padding:14px;font-size:.86rem;font-weight:700;font-family:inherit;transition:.2s}
+.bact.primary{background:var(--grad);border:none;box-shadow:0 6px 20px rgba(124,108,255,.35)}
+.bact.ghost{background:transparent;color:var(--txt2);font-weight:600}
+.bact:active{transform:scale(.97)}
+.chrow{display:flex;align-items:center;gap:12px;padding:13px 8px;border-radius:12px;
+  text-decoration:none;color:var(--txt);border-bottom:1px solid rgba(255,255,255,.05)}
+.chrow:last-child{border-bottom:none}
+.chrow:active{background:rgba(255,255,255,.06)}
+.chrow.reading{background:rgba(124,108,255,.08)}
+.chrow.nopages{opacity:.45}
+.chrow .cno{width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.07);display:grid;
+  place-items:center;font-size:.72rem;font-weight:800;color:var(--txt2);flex:none}
+.chrow .ct{flex:1;min-width:0;font-size:.84rem;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.chrow .cread{font-size:.6rem;font-weight:800;color:#c9beff;background:rgba(124,108,255,.18);
+  border:1px solid rgba(124,108,255,.4);padding:2px 7px;border-radius:7px;flex:none}
+.chrow .cp{font-size:.64rem;color:var(--txt3);flex:none}
+
 /* ---------- 满库清理横幅 ---------- */
 .warn-banner{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.05);margin-top:0;margin-bottom:14px}
 .overflow-list{margin-top:10px;max-height:220px;overflow-y:auto}

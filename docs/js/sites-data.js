@@ -10,8 +10,7 @@ window.SITES = [
     "color": "#ff6740",
     "prefix": "md-",
     "singleChapter": false,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 20
   },
   {
     "key": "nhentai",
@@ -25,8 +24,7 @@ window.SITES = [
     "color": "#ec2753",
     "prefix": "nh-",
     "singleChapter": true,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 1
   },
   {
     "key": "manhuagui",
@@ -40,22 +38,73 @@ window.SITES = [
     "color": "#3b82f6",
     "prefix": "mg-",
     "singleChapter": false,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 20
   },
   {
-    "key": "dmzj",
-    "name": "动漫之家",
-    "home": "https://manhua.dmzj.com",
-    "mirrors": [
-      "https://m.dmzj.com"
-    ],
-    "hint": "漫画链接（manhua.dmzj.com/<拼音名>）或数字漫画ID，默认爬最新几章",
-    "color": "#0ea5e9",
-    "prefix": "dz-",
+    "key": "mangabz",
+    "name": "漫画BZ",
+    "home": "https://www.mangabz.com",
+    "mirrors": [],
+    "hint": "漫画链接（mangabz.com 详情页或章节页），默认第 1 批 20 章",
+    "color": "#f97316",
+    "prefix": "mbz-",
     "singleChapter": false,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 20
+  },
+  {
+    "key": "mheee",
+    "name": "漫画人",
+    "home": "https://mheee.com",
+    "mirrors": [],
+    "hint": "漫画链接（mheee.com 详情页或章节页），默认第 1 批 20 章",
+    "color": "#14b8a6",
+    "prefix": "mhe-",
+    "singleChapter": false,
+    "batchSize": 20
+  },
+  {
+    "key": "baozimh",
+    "name": "包子漫画",
+    "home": "https://www.baozimh.com",
+    "mirrors": [],
+    "hint": "漫画链接（baozimh.com 详情页或章节页），默认第 1 批 20 章",
+    "color": "#eab308",
+    "prefix": "bz-",
+    "singleChapter": false,
+    "batchSize": 20
+  },
+  {
+    "key": "mkzhan",
+    "name": "漫客栈",
+    "home": "https://www.mkzhan.com",
+    "mirrors": [],
+    "hint": "漫画链接（mkzhan.com 详情页或章节页），默认第 1 批 20 章",
+    "color": "#8b5cf6",
+    "prefix": "mkz-",
+    "singleChapter": false,
+    "batchSize": 20
+  },
+  {
+    "key": "kuaikan",
+    "name": "快看漫画",
+    "home": "https://www.kuaikanmanhua.com",
+    "mirrors": [],
+    "hint": "漫画链接（kuaikanmanhua.com/web/comic/<id>），默认第 1 批 20 章",
+    "color": "#ffd12e",
+    "prefix": "kk-",
+    "singleChapter": false,
+    "batchSize": 20
+  },
+  {
+    "key": "copymanga",
+    "name": "拷贝漫画",
+    "home": "https://www.copymanga.tv",
+    "mirrors": [],
+    "hint": "漫画链接（copymanga.tv/comic/<path_word>）或 path_word",
+    "color": "#22c55e",
+    "prefix": "cm-",
+    "singleChapter": false,
+    "batchSize": 20
   },
   {
     "key": "wnacg",
@@ -68,8 +117,7 @@ window.SITES = [
     "color": "#a855f7",
     "prefix": "wn-",
     "singleChapter": true,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 1
   },
   {
     "key": "ehentai",
@@ -80,8 +128,7 @@ window.SITES = [
     "color": "#ede0d4",
     "prefix": "eh-",
     "singleChapter": true,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 1
   },
   {
     "key": "bika",
@@ -92,8 +139,7 @@ window.SITES = [
     "color": "#f472b6",
     "prefix": "bk-",
     "singleChapter": false,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 20
   },
   {
     "key": "jmcomic",
@@ -104,7 +150,6 @@ window.SITES = [
     "color": "#ff5c8a",
     "prefix": "",
     "singleChapter": false,
-    "defaultLimit": 3,
-    "maxLimit": 10
+    "batchSize": 20
   }
 ];

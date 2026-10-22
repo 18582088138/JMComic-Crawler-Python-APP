@@ -41,39 +41,48 @@ class MangadexCrawler(CrawlerBase):
         resp.raise_for_status()
         return resp.json()
 
-    def fetch_meta(self, target, limit):
+    def fetch_meta(self, target, batch):
         kind, tid = target.split(':', 1)
-        chapters_wanted = []  # (chapter_id, 章节号, 标题)
 
         if kind == 'chapter':
             ch = self.md_get(f'/chapter/{tid}')['data']
             manga_id = next(r['id'] for r in ch['relationships'] if r['type'] == 'manga')
             a = ch['attributes']
-            chapters_wanted.append((tid, a.get('chapter') or '1', a.get('title') or ''))
+            all_chapters = [(tid, a.get('chapter') or '1', a.get('title') or '')]
         else:
             manga_id = tid
-            feed = self.md_get(f'/manga/{manga_id}/feed', {
-                'limit': 500,
-                'order[chapter]': 'desc',
-                'contentRating[]': ['safe', 'suggestive', 'erotica', 'pornographic'],
-                'translatedLanguage[]': ['zh', 'zh-hk', 'en', 'ja'],
-            })
+            # 全量章节（阅读顺序升序），去重后按批次切片
+            all_chapters = []
             seen = set()
-            for item in feed['data']:
-                a = item['attributes']
-                if a.get('externalUrl') or not a.get('pages'):
-                    continue  # 外部托管章节抓不到图
-                chno = a.get('chapter') or '0'
-                if chno in seen:
-                    continue
-                seen.add(chno)
-                chapters_wanted.append((item['id'], chno, a.get('title') or ''))
-                if len(chapters_wanted) >= limit:
+            offset = 0
+            while True:
+                feed = self.md_get(f'/manga/{manga_id}/feed', {
+                    'limit': 500,
+                    'offset': offset,
+                    'order[chapter]': 'asc',
+                    'contentRating[]': ['safe', 'suggestive', 'erotica', 'pornographic'],
+                    'translatedLanguage[]': ['zh', 'zh-hk', 'en', 'ja'],
+                })
+                for item in feed['data']:
+                    a = item['attributes']
+                    if a.get('externalUrl') or not a.get('pages'):
+                        continue  # 外部托管章节抓不到图
+                    chno = a.get('chapter') or '0'
+                    if chno in seen:
+                        continue
+                    seen.add(chno)
+                    all_chapters.append((item['id'], chno, a.get('title') or ''))
+                offset += len(feed['data'])
+                if len(feed['data']) < 500 or offset >= feed.get('total', 0):
                     break
-            chapters_wanted.reverse()  # 按章节号升序（阅读顺序）
 
-        if not chapters_wanted:
+        if not all_chapters:
             raise CrawlError('没有找到可下载的章节（可能都是外部托管或无中/英/日语章节）')
+        total = len(all_chapters)
+        wanted = self.slice_batch(all_chapters, batch)
+        if not wanted:
+            raise CrawlError(f'第 {batch} 批没有章节（该作品共 {total} 章，'
+                             f'最多 {self.batch_size} 章/批，共 {(total + self.batch_size - 1) // self.batch_size} 批）')
 
         info = self.md_get(f'/manga/{manga_id}', {'includes[]': ['author']})
         attr = info['data']['attributes']
@@ -82,9 +91,13 @@ class MangadexCrawler(CrawlerBase):
                    if r['type'] == 'author' and 'attributes' in r]
         tags = [t['attributes']['name'].get('en', '') for t in attr.get('tags', [])][:10]
 
-        chapters = [{'photo_id': cid, 'title': f'第{chno}章' + (f' {ct}' if ct else ''), 'ref': cid}
-                    for cid, chno, ct in chapters_wanted]
-        return self.make_meta(manga_id, title, authors, tags, f'MangaDex {manga_id}', chapters)
+        chapters = [{'photo_id': cid,
+                     'title': f'第{chno}章' + (f' {ct}' if ct else ''),
+                     'order': float(chno) if str(chno).replace('.', '', 1).isdigit() else float(i + 1),
+                     'ref': cid}
+                    for i, (cid, chno, ct) in enumerate(wanted)]
+        return self.make_meta(manga_id, title, authors, tags, f'MangaDex {manga_id}', chapters,
+                              total=total, source_url=f'https://mangadex.org/title/{manga_id}')
 
     def get_chapter_image_urls(self, chapter_ref):
         home = self.md_get(f'/at-home/server/{chapter_ref}')

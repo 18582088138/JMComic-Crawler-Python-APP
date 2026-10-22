@@ -30,10 +30,10 @@ on:
           - 'ehentai'
           - 'bika'
 
-      LIMIT:
+      BATCH:
         type: number
-        description: '爬取章节数（多章节站点生效，最多 10；nhentai/wnacg/e-hentai 为整本单章忽略此项）'
-        default: 3
+        description: '批次号（多章节连载站点：20章/批，默认第 1 批；单章站点忽略）'
+        default: 1
 
       MODE:
         description: '产物模式'
@@ -75,7 +75,7 @@ jobs:
       JM_PAGES_INPUT: ${{ github.event.inputs.TARGET || github.event.issue.title }}
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
       JM_PAGES_SOURCE: ${{ github.event.inputs.SOURCE || 'auto' }}
-      JM_PAGES_LIMIT: ${{ github.event.inputs.LIMIT || 3 }}
+      JM_PAGES_BATCH: ${{ github.event.inputs.BATCH || 1 }}
       JM_PAGES_KEEP: ${{ github.event.inputs.KEEP_LATEST || 30 }}
       JM_PAGES_ISSUE_BODY: ${{ github.event.issue.body }}
       CLIENT_IMPL: ${{ github.event.inputs.CLIENT_IMPL }}

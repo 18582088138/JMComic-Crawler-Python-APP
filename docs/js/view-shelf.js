@@ -192,7 +192,8 @@ function renderShelf() {
     el.addEventListener('click', e => {
       if (e.target.closest('a,button')) return;
       const c = all.find(x => String(x.id) === el.dataset.id);
-      if (c && c.hasReader !== false) location.href = 'reader.html?id=' + encodeURIComponent(c.id);
+      // 点开进作品详情（目录清单），阅读按钮仍直达阅读器
+      if (c) location.hash = '#/book/' + encodeURIComponent(c.id);
     });
   });
 

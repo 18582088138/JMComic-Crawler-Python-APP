@@ -15,7 +15,7 @@
     JM_PAGES_KEEP       每站书库最多保留几本（默认 30）。
                         正常爬取时宽限到 KEEP+10 才硬删（给前端「下载或清理」提示留出时间窗），
                         __cleanup__ 任务按 KEEP 精确清理
-    JM_PAGES_LIMIT      章节数上限（多章节站点生效，默认 3，单章站点忽略）
+    JM_PAGES_BATCH      批次号（多章节站点生效：20章/批，默认第 1 批；单章站点忽略）
     JM_PAGES_ISSUE_BODY issue 触发时传入正文，支持 mode:/keep:/source:/limit: 覆盖
     JM_PAGES_MOCK       置 1 时不联网，生成模拟图片并写入 JM_PAGES_DOCS_DIR（本地调试用）
     JM_PAGES_DOCS_DIR   mock 模式的站点目录（默认 ./docs）
@@ -66,9 +66,9 @@ def parse_issue_body_overrides(body):
     m = re.search(r'(?im)^\s*source\s*[:：]\s*(\w+)\s*$', body)
     if m:
         overrides['source'] = normalize_source(m.group(1))
-    m = re.search(r'(?im)^\s*limit\s*[:：]\s*(\d+)\s*$', body)
+    m = re.search(r'(?im)^\s*(?:batch|limit)\s*[:：]\s*(\d+)\s*$', body)
     if m:
-        overrides['limit'] = int(m.group(1))
+        overrides['batch'] = int(m.group(1))
     return overrides
 
 
@@ -77,7 +77,7 @@ def normalize_source(source):
     return LEGACY_SOURCE.get(source, source)
 
 
-def mock_crawl(source, target, work_dir, limit):
+def mock_crawl(source, target, work_dir, batch):
     """本地调试用：不联网，生成模拟章节图片"""
     from PIL import Image, ImageDraw
 
@@ -93,9 +93,11 @@ def mock_crawl(source, target, work_dir, limit):
         'authors': ['mock-author'],
         'tags': ['mock', '测试'],
         'description': '本地 mock 数据，仅用于调试站点构建流程',
+        'sourceUrl': '',
+        'totalChapters': 2,
         'chapters': [
-            {'photo_id': aid, 'dir_name': '1', 'title': '第1章'},
-            {'photo_id': aid, 'dir_name': '2', 'title': '第2章'},
+            {'photo_id': f'{aid}-1', 'dir_name': '1', 'title': '第1章', 'order': 1.0},
+            {'photo_id': f'{aid}-2', 'dir_name': '2', 'title': '第2章', 'order': 2.0},
         ],
     }
     colors = [(94, 84, 255), (0, 180, 216), (255, 121, 63), (46, 196, 182)]
@@ -194,13 +196,13 @@ def main():
         mode = 'both'
     keep = int(env('JM_PAGES_KEEP', '30') or '30')
     source = normalize_source(env('JM_PAGES_SOURCE', 'auto'))
-    limit = int(env('JM_PAGES_LIMIT', '3') or '3')
+    batch = int(env('JM_PAGES_BATCH', '1') or '1')
 
     overrides = parse_issue_body_overrides(env('JM_PAGES_ISSUE_BODY'))
     mode = overrides.get('mode', mode)
     keep = overrides.get('keep', keep)
     source = overrides.get('source', source)
-    limit = overrides.get('limit', limit)
+    batch = overrides.get('batch', overrides.get('limit', batch))
 
     raw_dir = os.path.abspath(env('JM_PAGES_RAW_DIR', './build/pages_raw'))
     mock = env('JM_PAGES_MOCK') == '1'
@@ -216,7 +218,7 @@ def main():
     if mock:
         docs_dir = os.path.abspath(env('JM_PAGES_DOCS_DIR', './docs'))
         site_dir = docs_dir  # 兼容旧布局：docs/comics + docs/data/comics.json
-        meta, raw_dir, crawler = mock_crawl(source, raw_input, raw_dir, limit)
+        meta, raw_dir, crawler = mock_crawl(source, raw_input, raw_dir, batch)
         entry = site_builder.build_site(meta, raw_dir, site_dir, mode)
         site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
         # 旧布局兼容：index.json 落到 data/comics.json
@@ -231,7 +233,7 @@ def main():
 
     # ---------- 真实爬取 ----------
     try:
-        meta, raw_dir_actual, crawler = registry.crawl(source, raw_input, raw_dir, limit)
+        meta, raw_dir_actual, crawler = registry.crawl(source, raw_input, raw_dir, batch)
     except GenericCrawlFailed as e:
         log(f'通用兜底爬取失败: {e}')
         branch_store.append_wishlist(e.url, e.domain, str(e)[:300])

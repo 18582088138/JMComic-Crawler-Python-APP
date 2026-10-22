@@ -48,7 +48,7 @@ class GenericCrawler(CrawlerBase):
             return 'https://' + m.group(1)
         raise ValueError('通用兜底需要一个 http(s) 链接')
 
-    def fetch_meta(self, url, limit):
+    def fetch_meta(self, url, batch):
         try:
             resp = self.session.get(url, timeout=30)
         except Exception as e:
@@ -71,7 +71,8 @@ class GenericCrawler(CrawlerBase):
         domain = urlparse(url).netloc.replace('.', '_')
         log(f'通用爬虫命中《{title}》: {len(urls)} 张候选图')
         return self.make_meta(domain, title, [], [], f'通用爬虫 {url}',
-                              [{'photo_id': '1', 'title': '全部图片', 'ref': urls}])
+                              [{'photo_id': '1', 'title': '全部图片', 'order': 1.0, 'ref': urls}],
+                              total=1, source_url=url)
 
     def get_chapter_image_urls(self, chapter_ref):
         return chapter_ref  # fetch_meta 已给出完整 URL 列表

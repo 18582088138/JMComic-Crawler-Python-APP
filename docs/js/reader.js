@@ -138,12 +138,18 @@ function initWithManifest(m) {
     zb.style.display = 'grid';
     zb.addEventListener('click', () => { location.href = S.baseUrl + encodeURIComponent(m.zip); });
   }
-  // 恢复进度
+  // 恢复进度（优先按章节 key 定位——批次合并后章节序号可能变化）
   if (!S.ch) {
     const prog = store.get('prog_' + S.id, null);
-    if (prog && prog.ch <= m.chapters.length) {
+    if (prog && prog.chKey) {
+      const idx = m.chapters.findIndex(c => String(c.photoId) === String(prog.chKey));
+      if (idx >= 0) { S.ch = idx + 1; S.p = prog.p || 1; }
+    }
+    if (!S.ch && prog && prog.ch <= m.chapters.length) {
       S.ch = prog.ch;
       S.p = prog.p || 1;
+    }
+    if (S.ch) {
       setTimeout(() => toast('已恢复到 第' + S.ch + '章 第' + S.p + '页'), 600);
     } else { S.ch = 1; S.p = 1; }
   }
@@ -231,7 +237,8 @@ let saveTimer = null;
 function saveProgress() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    store.set('prog_' + S.id, { ch: S.ch, p: S.p, t: Date.now() });
+    const ch = S.manifest && S.manifest.chapters[S.ch - 1];
+    store.set('prog_' + S.id, { ch: S.ch, chKey: ch ? String(ch.photoId) : null, p: S.p, t: Date.now() });
   }, 400);
 }
 

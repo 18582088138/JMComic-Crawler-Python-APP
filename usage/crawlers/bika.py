@@ -62,7 +62,7 @@ class BikaCrawler(CrawlerBase):
             raise CrawlError(f'哔咔 API {path_query} 返回 HTTP {resp.status_code}: {resp.text[:120]!r}')
         return resp.json()
 
-    def fetch_meta(self, cid, limit):
+    def fetch_meta(self, cid, batch):
         info = self._signed_get(f'comics/{cid}')
         comic = info.get('comic') or info
         title = comic.get('title') or f'哔咔 {cid}'
@@ -81,13 +81,17 @@ class BikaCrawler(CrawlerBase):
         if not eps:
             raise CrawlError('哔咔没有解析到章节（该漫画可能需登录/App 内可见）')
         eps.sort(key=lambda e: e.get('order', 0))
-        wanted = eps[-limit:]
+        total = len(eps)
+        wanted = self.slice_batch(eps, batch)
+        if not wanted:
+            raise CrawlError(f'第 {batch} 批没有章节（该作品共 {total} 章）')
 
         chapters = [{'photo_id': e.get('_id', str(e.get('order'))),
                      'title': e.get('title') or f"第{e.get('order', i + 1)}话",
+                     'order': float(e.get('order', i + 1)),
                      'ref': {'cid': cid, 'order': e.get('order', i + 1)}}
                     for i, e in enumerate(wanted)]
-        return self.make_meta(cid, title, authors, tags[:10], f'哔咔 {cid}', chapters)
+        return self.make_meta(cid, title, authors, tags[:10], f'哔咔 {cid}', chapters, total=total)
 
     def get_chapter_image_urls(self, chapter_ref):
         urls, page = [], 1

@@ -44,13 +44,13 @@ class JmcomicCrawler(CrawlerBase):
         from jmcomic import JmcomicText
         return JmcomicText.parse_to_jm_id(text)
 
-    def fetch_meta(self, target, limit):
+    def fetch_meta(self, target, batch):
         raise NotImplementedError('JMComic 走整本下载，见 crawl()')
 
     def get_chapter_image_urls(self, chapter_ref):
         raise NotImplementedError('JMComic 走整本下载，见 crawl()')
 
-    def crawl(self, target_text, work_dir, limit=None):
+    def crawl(self, target_text, work_dir, batch=1):
         aid = self.parse_target(target_text)
         impl = os.getenv('CLIENT_IMPL', '').strip()
 
@@ -81,15 +81,19 @@ class JmcomicCrawler(CrawlerBase):
         for pid, pindex, pname in album.episode_list:
             chapters.append({
                 'photo_id': str(pid),
-                'dir_name': str(pindex),  # dir_rule 为 Bd_Pindex，章节目录名即 Pindex
+                'dir_name': str(pindex),  # dir_rule 为 Bd_Pindex，原始目录名即 Pindex
                 'title': str(pname).strip(),
+                'order': float(pindex),
             })
+        aid = str(album.album_id)
         return {
-            'id': str(album.album_id),
+            'id': aid,
             'site': self.site,
             'title': album.name,
             'authors': list(album.authors),
             'tags': [str(t) for t in album.tags],
             'description': strip_html(getattr(album, 'description', '')),
+            'sourceUrl': f'https://18comic.vip/album/{aid}/',
+            'totalChapters': len(chapters),
             'chapters': chapters,
         }

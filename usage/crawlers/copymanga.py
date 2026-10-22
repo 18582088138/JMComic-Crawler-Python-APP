@@ -66,30 +66,32 @@ class CopymangaCrawler(CrawlerBase):
                 log(errs[-1] + '，尝试下一个域名')
         raise CrawlError('拷贝漫画API全部不可用:\n' + '\n'.join(errs))
 
-    def fetch_meta(self, target, limit):
+    def fetch_meta(self, target, batch):
         path_word, chapter_uuid = target.split(':', 1)
         comic = self.cm_get(f'/comic/{path_word}')['comic']
         title = comic['name']
         authors = [a['name'] for a in comic.get('author', [])]
 
-        wanted = []  # (uuid, 章节名)
         if chapter_uuid:
-            wanted.append((chapter_uuid, '单章'))
+            wanted = [(chapter_uuid, '单章', 1)]
+            total = 1
         else:
             feed = self.cm_get(f'/comic/{path_word}/group/default/chapters',
                                {'limit': 500, 'offset': 0})
             items = feed.get('list', [])
             items.sort(key=lambda x: x.get('ordered', 0))
-            wanted = [(c['uuid'], c['name']) for c in items[-limit:]]
+            all_chapters = [(c['uuid'], c['name'], i + 1) for i, c in enumerate(items)]
+            total = len(all_chapters)
+            wanted = self.slice_batch(all_chapters, batch)
 
         if not wanted:
-            raise CrawlError('没有找到任何章节')
+            raise CrawlError(f'第 {batch} 批没有章节（该作品共 {total} 章）')
 
-        self._path_word = path_word
-        chapters = [{'photo_id': cuuid, 'title': cname or f'第{i + 1}章',
+        chapters = [{'photo_id': cuuid, 'title': cname or f'第{o}章', 'order': float(o),
                      'ref': {'path_word': path_word, 'uuid': cuuid}}
-                    for i, (cuuid, cname) in enumerate(wanted)]
-        return self.make_meta(path_word, title, authors, [], f'拷贝漫画 {path_word}', chapters)
+                    for cuuid, cname, o in wanted]
+        return self.make_meta(path_word, title, authors, [], f'拷贝漫画 {path_word}', chapters,
+                              total=total, source_url=f'https://www.mangacopy.com/comic/{path_word}')
 
     def get_chapter_image_urls(self, chapter_ref):
         detail = self.cm_get(f"/comic/{chapter_ref['path_word']}/chapter/{chapter_ref['uuid']}")

@@ -8,7 +8,12 @@ const DETECT = [
   { site: 'mangadex', re: /mangadex\.org\/(?:title|chapter)\//i },
   { site: 'nhentai', re: /nhentai\.(?:net|to|xxx)\/g\//i },
   { site: 'manhuagui', re: /manhuagui\.com\/comic\//i },
-  { site: 'dmzj', re: /(?:manhua\.)?dmzj\.com\//i },
+  { site: 'mangabz', re: /mangabz\.com\//i },
+  { site: 'mheee', re: /mheee\.com\//i },
+  { site: 'baozimh', re: /baozimh\.com\//i },
+  { site: 'mkzhan', re: /mkzhan\.com\//i },
+  { site: 'kuaikan', re: /kuaikanmanhua\.com\//i },
+  { site: 'copymanga', re: /(?:copymanga|mangacopy)\.\w+\/comic\//i },
   { site: 'wnacg', re: /wnacg\.\w+\/photos-/i },
   { site: 'ehentai', re: /e-hentai\.org\/g\//i },
   { site: 'bika', re: /picacomic\.com\/|\b[0-9a-f]{24}\b/i },
@@ -81,7 +86,7 @@ function submitCurrent(btn) {
 
   let source = currentSource();
   if (source === 'auto') source = detectSite(target) || 'auto';
-  const limit = Math.max(1, Math.min(10, parseInt($('#limitInput').value, 10) || 3));
+  const batch = Math.max(1, Math.min(99, parseInt($('#batchInput').value, 10) || 1));
   const keep = Math.max(1, Math.min(99, parseInt(store.get('keep', 30), 10) || 30));
 
   btn.disabled = true;
@@ -93,7 +98,7 @@ function submitCurrent(btn) {
   if (token) {
     dispatchWorkflow(repo, {
       TARGET: target, SOURCE: source === 'generic' ? 'auto' : source,
-      LIMIT: String(limit), MODE: MODE_LABEL[mode],
+      BATCH: String(batch), MODE: MODE_LABEL[mode],
       KEEP_LATEST: String(keep), CLIENT_IMPL: '',  // ⚠️ inputs 全部必须是字符串，否则 GitHub 返回 422
     }).then(status => {
       done();
@@ -121,7 +126,7 @@ function submitCurrent(btn) {
       }
       const lines = ['mode: ' + mode];
       if (source !== 'auto' && source !== 'generic') lines.push('source: ' + source);
-      if (source !== 'jmcomic') lines.push('limit: ' + limit);
+      if (source !== 'jmcomic' && batch > 1) lines.push('batch: ' + batch);
       lines.push('', '由云书架网页引导创建，爬取完成后本 issue 会自动收到链接并被关闭。');
       task.setPending({ id: target, target, source, ts: Date.now() });
       task.showTask(target);
@@ -157,6 +162,22 @@ function loadLastRun() {
       }
     })
     .catch(() => {});
+}
+
+/* 作品详情页「抓取更多章节」跳转过来的预填 */
+export function applyCrawlPrefill() {
+  const pre = store.get('crawl_prefill', null);
+  if (!pre) return;
+  store.set('crawl_prefill', null);
+  if (pre.target) {
+    const input = $('#targetInput');
+    input.value = pre.target;
+    refreshChip();
+  }
+  if (pre.batch) {
+    $('#batchInput').value = pre.batch;
+    toast(`已预填：第 ${pre.batch} 批`, 2600);
+  }
 }
 
 export function initCrawlView(onTaskDone) {

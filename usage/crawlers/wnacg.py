@@ -53,7 +53,7 @@ class WnacgCrawler(CrawlerBase):
                 log(last + '，尝试下一个镜像')
         raise CrawlError(f'wnacg 全部镜像不可用（最后错误: {last}）')
 
-    def fetch_meta(self, aid, limit):
+    def fetch_meta(self, aid, batch):
         base, html = self._get(f'/photos-index-aid-{aid}.html')
         tm = re.search(r'<h2[^>]*>([^<]+)</h2>', html) or re.search(r'<title>([^<|]+)', html)
         title = tm.group(1).strip() if tm else f'wnacg {aid}'
@@ -83,7 +83,8 @@ class WnacgCrawler(CrawlerBase):
             raise CrawlError('wnacg 画廊页没有解析到图片（页面结构可能已变化）')
         log(f'wnacg《{title}》: 共 {len(ordered)} 页')
         return self.make_meta(aid, title, authors, [], f'wnacg aid-{aid}',
-                              [{'photo_id': aid, 'title': '全一话', 'ref': ordered}])
+                              [{'photo_id': aid, 'title': '全一话', 'order': 1.0, 'ref': ordered}],
+                              total=1, source_url=f'https://www.wnacg.com/photos-index-aid-{aid}.html')
 
     def get_chapter_image_urls(self, chapter_ref):
         # chapter_ref 为缩略图 URL 列表；/data/t/ → /data/ 得原图

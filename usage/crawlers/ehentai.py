@@ -33,7 +33,7 @@ class EhentaiCrawler(CrawlerBase):
             return f'{m.group(1)}/{m.group(2)}'
         raise ValueError(f'无法识别 E-Hentai 目标: {text}（需要完整画廊链接，含 token 段）')
 
-    def fetch_meta(self, target, limit):
+    def fetch_meta(self, target, batch):
         gid, token = target.split('/', 1)
         gallery_url = f'{BASE}/g/{gid}/{token}/'
         resp = self.session.get(gallery_url, timeout=30)
@@ -73,7 +73,8 @@ class EhentaiCrawler(CrawlerBase):
         page_links = page_links[:MAX_PAGES]
         log(f'E-Hentai《{title}》: 共 {len(page_links)} 页（上限 {MAX_PAGES}）')
         return self.make_meta(gid, title, artists, [], f'e-hentai g/{gid}',
-                              [{'photo_id': gid, 'title': '全一话', 'ref': page_links}])
+                              [{'photo_id': gid, 'title': '全一话', 'order': 1.0, 'ref': page_links}],
+                              total=1, source_url=gallery_url)
 
     def get_chapter_image_urls(self, chapter_ref):
         """逐页解析原图（返回与原图等长的 URL 列表，下载仍由基类统一执行）"""

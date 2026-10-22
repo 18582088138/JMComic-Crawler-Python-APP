@@ -51,9 +51,9 @@
           <button data-mode="zip">仅打包下载</button>
         </div>
         <div class="limitrow">
-          章节数
-          <input type="number" id="limitInput" value="3" min="1" max="10">
-          <span>多章节连载站点生效，默认爬最新几章；单章站点（nhentai 等）忽略此项</span>
+          批次
+          <input type="number" id="batchInput" value="1" min="1" max="99">
+          <span>多章节连载站点：20 章/批，从第 1 章起算；单章站点（nhentai 等）忽略此项</span>
         </div>
         <button class="bigbtn" id="submitBtn">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff"><path d="M13 2 4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg>
@@ -108,6 +108,22 @@
     <div class="foot">
       数据由 GitHub Actions 爬取并托管于 GitHub Pages<br>
       每站书库容量有限，旧本子会被自动清理 · 仅供个人学习使用
+    </div>
+  </section>
+
+  <!-- ============ 作品详情 ============ -->
+  <section class="view" id="view-book">
+    <div class="bookhead card">
+      <div class="bhcover" id="bookCover"></div>
+      <div class="bhinfo">
+        <h2 id="bookTitle">加载中…</h2>
+        <div class="bhmeta" id="bookMeta"></div>
+        <div class="bhtags" id="bookTags"></div>
+      </div>
+    </div>
+    <div class="bookacts" id="bookActs"></div>
+    <div class="card" style="padding:6px 10px">
+      <div id="bookChapters"></div>
     </div>
   </section>
 
