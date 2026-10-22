@@ -285,7 +285,7 @@ class MkzhanCrawler(SimpleCmsCrawler):
     id_prefix = 'mkz-'
     home = 'https://www.mkzhan.com'
     host = 'www.mkzhan.com'
-    hint = '漫画链接（mkzhan.com/<数字ID>/），默认第 1 批 20 章'
+    hint = '漫画链接（mkzhan.com/<数字ID>/ 或章节页链接）；目录接口需登录，详情页默认抓第一章，更多章节请直接贴章节页链接'
     color = '#8b5cf6'
     url_patterns = [r'mkzhan\.com/']
     image_host = 'https://cdn.mkzhan.com'

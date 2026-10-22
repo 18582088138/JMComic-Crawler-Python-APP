@@ -41,68 +41,13 @@ window.SITES = [
     "batchSize": 20
   },
   {
-    "key": "mangabz",
-    "name": "漫画BZ",
-    "home": "https://www.mangabz.com",
-    "mirrors": [],
-    "hint": "漫画链接（mangabz.com 详情页或章节页），默认第 1 批 20 章",
-    "color": "#f97316",
-    "prefix": "mbz-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
-    "key": "mheee",
-    "name": "漫画人",
-    "home": "https://mheee.com",
-    "mirrors": [],
-    "hint": "漫画链接（mheee.com 详情页或章节页），默认第 1 批 20 章",
-    "color": "#14b8a6",
-    "prefix": "mhe-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
-    "key": "baozimh",
-    "name": "包子漫画",
-    "home": "https://www.baozimh.com",
-    "mirrors": [],
-    "hint": "漫画链接（baozimh.com 详情页或章节页），默认第 1 批 20 章",
-    "color": "#eab308",
-    "prefix": "bz-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
     "key": "mkzhan",
     "name": "漫客栈",
     "home": "https://www.mkzhan.com",
     "mirrors": [],
-    "hint": "漫画链接（mkzhan.com 详情页或章节页），默认第 1 批 20 章",
+    "hint": "漫画链接（mkzhan.com/<数字ID>/ 或章节页链接）；目录接口需登录，详情页默认抓第一章，更多章节请直接贴章节页链接",
     "color": "#8b5cf6",
     "prefix": "mkz-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
-    "key": "kuaikan",
-    "name": "快看漫画",
-    "home": "https://www.kuaikanmanhua.com",
-    "mirrors": [],
-    "hint": "漫画链接（kuaikanmanhua.com/web/comic/<id>），默认第 1 批 20 章",
-    "color": "#ffd12e",
-    "prefix": "kk-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
-    "key": "copymanga",
-    "name": "拷贝漫画",
-    "home": "https://www.mangacopy.com",
-    "mirrors": [],
-    "hint": "漫画链接（mangacopy.com/comic/<path_word>）、path_word 或直接输漫画名搜索",
-    "color": "#22c55e",
-    "prefix": "cm-",
     "singleChapter": false,
     "batchSize": 20
   },

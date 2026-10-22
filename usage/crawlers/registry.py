@@ -8,28 +8,28 @@
 """
 from .base import CrawlerBase, CrawlError, log
 from .bika import BikaCrawler
-from .copymanga import CopymangaCrawler
 from .ehentai import EhentaiCrawler
 from .generic import GenericCrawler, GenericCrawlFailed
 from .jmcomic_crawler import JmcomicCrawler
-from .kuaikan import KuaikanCrawler
 from .mangadex import MangadexCrawler
 from .manhuagui import ManhuaguiCrawler
 from .nhentai import NhentaiCrawler
-from .simple_cms import BaozimhCrawler, MangabzCrawler, MheeeCrawler, MkzhanCrawler
+from .simple_cms import MkzhanCrawler
 from .wnacg import WnacgCrawler
+
+# 已下架（代码保留待研究，见 ARCHITECTURE.md §6）：
+#   copymanga  —— v3 API 已消亡（全部域名 404/无法连接）
+#   baozimh    —— Cloudflare 级 403（数据中心 IP 无法通过）
+#   kuaikan    —— SPA，已知端点全 404，SSR 无章节数据
+#   mangabz    —— 章节图在外部混淆 JS 中，通用抽取只拿到 5 张噪音图
+#   mheee      —— 章节结构未解，且多次探测后触发 403
 
 # 注册顺序即 auto 识别优先级（JM 的数字车号兜底放最后单独处理）
 CRAWLER_CLASSES = [
     MangadexCrawler,
     NhentaiCrawler,
     ManhuaguiCrawler,
-    MangabzCrawler,
-    MheeeCrawler,
-    BaozimhCrawler,
     MkzhanCrawler,
-    KuaikanCrawler,
-    CopymangaCrawler,
     WnacgCrawler,
     EhentaiCrawler,
     BikaCrawler,
