@@ -98,9 +98,9 @@ window.SITES = [
   {
     "key": "copymanga",
     "name": "拷贝漫画",
-    "home": "https://www.copymanga.tv",
+    "home": "https://www.mangacopy.com",
     "mirrors": [],
-    "hint": "漫画链接（copymanga.tv/comic/<path_word>）或 path_word",
+    "hint": "漫画链接（mangacopy.com/comic/<path_word>）、path_word 或直接输漫画名搜索",
     "color": "#22c55e",
     "prefix": "cm-",
     "singleChapter": false,
