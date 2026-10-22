@@ -44,6 +44,10 @@
   超出 `KEEP` 未满 `KEEP+10` 的本子由书架页横幅提示「下载或清理」，
   用户确认后 dispatch `TARGET=__cleanup__`（Token 或 issue `[jm] __cleanup__` 均可）
   对所有站点按 KEEP 精确清理。
+- **指定删除（__delete__）**：书架「管理」进入选择模式（checkbox 多选/全选/二次确认），
+  dispatch `TARGET=__delete__` + `DELETE_IDS`（issue 则标题 `[jm] __delete__` + 正文 `delete: ids`），
+  跨 data 分支按 ID 删目录+清索引，gh-pages 同步移除；
+  前端同步清理本地进度/收藏/离线标记，并 postMessage 通知 SW 清除该本子的图片缓存。
 
 **已知限制**：GITHUB_TOKEN 推送 gh-pages **不会自动触发 Pages 构建**（GitHub 限制），
 两个工作流都在推送后显式 `POST /repos/{repo}/pages/builds` 请求部署（含失败路径：
