@@ -124,7 +124,10 @@ gh-pages 装配需拉取全量工作区（随总量增长会变慢）；数据�
 - SW 安装时缓存应用外壳；`comics/*` 图片 cache-first（看过即缓存）。
 - 阅读器「缓存全本」按钮：并发 4 路预取全本图片 → SW 拦截入缓存 →
   完成后写 `jm_offline_<id>`，书架显示「已离线」角标，断网可读。
-- 页面导航 network-first，保证前端更新及时生效。
+- 页面导航 network-first；sw.js 的 VERSION 由装配时按前端内容哈希自动注入
+  （`branch_store.bump_sw_version`），任何前端变化都会产生新 SW；
+  页面监听 `controllerchange` 自动刷新一次——旧缓存 JS 不会再残留服役
+  （2026-10-22 旧 JS dispatch payload 持续 422 的根治措施）。
 
 ## 5. 运维状态与排障速查
 
@@ -143,6 +146,8 @@ Actions Workflow permissions = write；Issues = 开启。
 - `usage_log` 插件依赖 `psutil`，工作流需单独 `pip install psutil`
 - 本子原图多为 `.webp`，manifest 保留原后缀，手写测试 URL 勿想当然用 `.jpg`
 - 统一用 `curl_cffi`（jmcomic 依赖、过 Cloudflare）；`requests` 不在依赖里
+- 「下载JM本子 (commit/dispatch)」两个上游工作流已通过 API 禁用
+  （用户只用云书架；且历史重写 force-push 会把所有 path 过滤工作流误触发一次）
 - MangaDex 语言过滤只接受 `zh/zh-hk/en/ja`；部分热门作品是外部托管章节抓不到图（报"没有找到可下载的章节"）
 - nhentai 主站封数据中心 IP，靠镜像 `nhentai.to/.xxx` 回退
 - **新站点（漫画柜/动漫之家/wnacg/E-Hentai/哔咔）按公开爬虫通行做法编写，本地被墙未逐站实测**；
