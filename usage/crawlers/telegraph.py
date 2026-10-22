@@ -68,7 +68,12 @@ class TelegraphCrawler(CrawlerBase):
                 log(f'  img: {tag[:180]}')
             raise CrawlError('Telegra 文章页没有找到图片（页面结构可能已变化）')
 
-        slug = url.rstrip('/').rsplit('/', 1)[-1][:60] or 'article'
+        # ID：slug 尾部的月-日 + URL 短哈希（避免百分号编码的长日文 ID）
+        import hashlib
+        slug_src = url.rstrip('/').rsplit('/', 1)[-1]
+        h = hashlib.md5(url.encode()).hexdigest()[:8]
+        datem = re.search(r'-(\d{2})-(\d{2})$', slug_src)
+        slug = f'{datem.group(1)}{datem.group(2)}-{h}' if datem else h
         log(f'Telegra《{title}》: {len(urls)} 页')
         return self.make_meta(slug, title, authors, [], f'Telegra {url}',
                               [{'photo_id': '1', 'title': '全文', 'order': 1.0, 'ref': urls}],
