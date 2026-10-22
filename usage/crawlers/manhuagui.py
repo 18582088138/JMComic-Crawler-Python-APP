@@ -153,4 +153,12 @@ class ManhuaguiCrawler(CrawlerBase):
                 continue
             if info.get('files') and info.get('path') is not None:
                 return info
+        # 解包失败：dump 页面结构线索（云端校准用）
+        log(f'漫画柜解包失败，页面调试（HTML {len(html)} 字符）')
+        for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
+            block = m.group(1).strip()
+            if block and re.search(r'(eval|pack|files|images|jpg|png|webp|hamreus|cid|chapter)', block, re.IGNORECASE):
+                log(f'  script[{len(block)}]: {block[:800]!r}')
+        for src in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html):
+            log(f'  script-src: {src[:160]}')
         raise CrawlError('漫画柜章节页图床信息解包失败（JS 加密结构可能已变化）')

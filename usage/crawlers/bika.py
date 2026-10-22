@@ -15,7 +15,13 @@ import uuid
 
 from .base import CrawlerBase, CrawlError, log
 
-API_HOST = 'https://pica-api.picacomic.com'
+API_HOSTS = [  # pica-api.picacomic.com 已不再解析（2026-10 实测 DNS 失效），按序回退
+    'https://pica-api.picacomic.com',
+    'https://api.picacomic.com',
+    'https://picaapi.picacomic.com',
+    'https://api.manhuapica.com',
+    'https://go.picacomic.com',
+]
 API_KEY = 'C69BAF41DA5ABD1FFEDC6D2FEA56B'
 SECRET_KEY = '~d}$Q7$eIni=V)9\\RK/P.RM4;9[7|@/CA}b~OW!3?EV`:<>M7pddUBL5n|0/*Cn'
 
@@ -72,10 +78,18 @@ class BikaCrawler(CrawlerBase):
             'User-Agent': 'okhttp/3.8.1',
         }
         time.sleep(0.3)
-        resp = self.session.get(f'{API_HOST}/{path_query}', headers=headers, timeout=30)
-        if resp.status_code != 200:
-            raise CrawlError(f'哔咔 API {path_query} 返回 HTTP {resp.status_code}: {resp.text[:120]!r}')
-        return resp.json()
+        last_err = None
+        for host in API_HOSTS:
+            try:
+                resp = self.session.get(f'{host}/{path_query}', headers=headers, timeout=20)
+                if resp.status_code == 200:
+                    return resp.json()
+                last_err = f'{host} → HTTP {resp.status_code}: {resp.text[:100]!r}'
+                log(f'哔咔 {last_err}，尝试下一个 API 域名')
+            except Exception as e:
+                last_err = f'{host} → {e}'
+                log(f'哔咔 {last_err}，尝试下一个 API 域名')
+        raise CrawlError(f'哔咔 API 域名全部不可用（最后错误: {last_err}）')
 
     def fetch_meta(self, cid, batch):
         if cid == 'hot:':

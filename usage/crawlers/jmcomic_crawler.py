@@ -53,6 +53,7 @@ class JmcomicCrawler(CrawlerBase):
     def crawl(self, target_text, work_dir, batch=1):
         aid = self.parse_target(target_text)
         impl = os.getenv('CLIENT_IMPL', '').strip()
+        os.environ.setdefault('JM_PAGES_RAW_DIR', work_dir)
 
         from jmcomic import create_option
         option = create_option(OPTION_FILE)

@@ -56,6 +56,14 @@ class WnacgCrawler(CrawlerBase):
                 log(last + '，尝试下一个镜像')
         raise CrawlError(f'wnacg 全部镜像不可用（最后错误: {last}）')
 
+    def _get_gallery(self, aid):
+        """画廊首页：新版多页画廊裸 -aid- URL 会 404，先试 page-1 形式"""
+        try:
+            return self._get(f'/photos-index-page-1-aid-{aid}.html')
+        except CrawlError:
+            log('wnacg: page-1 形式 404，回退裸 -aid- 形式')
+            return self._get(f'/photos-index-aid-{aid}.html')
+
     def fetch_meta(self, aid, batch):
         if aid.startswith('home:'):
             resp = self.session.get(aid[5:], timeout=30)
@@ -64,7 +72,7 @@ class WnacgCrawler(CrawlerBase):
                 raise CrawlError('wnacg 自动发现失败：页面没有画廊链接')
             log(f'wnacg 自动发现 → aid-{m.group(1)}')
             aid = m.group(1)
-        base, html = self._get(f'/photos-index-aid-{aid}.html')
+        base, html = self._get_gallery(aid)
         tm = re.search(r'<h2[^>]*>([^<]+)</h2>', html) or re.search(r'<title>([^<|]+)', html)
         title = tm.group(1).strip() if tm else f'wnacg {aid}'
         am = re.search(r'作者[：:]\s*<a[^>]*>([^<]+)</a>', html)
