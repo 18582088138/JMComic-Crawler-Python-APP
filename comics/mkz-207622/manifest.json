@@ -1,0 +1,44 @@
+{
+  "id": "mkz-207622",
+  "site": "mkzhan",
+  "title": "妖神记",
+  "author": "{{ item.author_title }}",
+  "authors": [
+    "{{ item.author_title }}"
+  ],
+  "tags": [],
+  "description": "漫客栈 https://www.mkzhan.com/207622/",
+  "sourceUrl": "https://www.mkzhan.com/207622/",
+  "totalChapters": 1,
+  "updatedAt": "2026-10-22T22:48:21Z",
+  "hasReader": true,
+  "hasZip": false,
+  "zip": null,
+  "pageCount": 14,
+  "chapterCount": 1,
+  "chapters": [
+    {
+      "photoId": "476064",
+      "title": "开始阅读",
+      "order": 1.0,
+      "pageCount": 14,
+      "pages": [
+        "images/476064/001.jpg",
+        "images/476064/002.jpg",
+        "images/476064/003.jpg",
+        "images/476064/004.jpg",
+        "images/476064/005.jpg",
+        "images/476064/006.jpg",
+        "images/476064/007.jpg",
+        "images/476064/008.jpg",
+        "images/476064/009.jpg",
+        "images/476064/010.jpg",
+        "images/476064/011.jpg",
+        "images/476064/012.jpg",
+        "images/476064/013.jpg",
+        "images/476064/014.jpg"
+      ],
+      "index": 1
+    }
+  ]
+}
