@@ -81,8 +81,8 @@ class WnacgCrawler(CrawlerBase):
         # 收集全部分页的缩略图与视图页链接（第一页已含，后续页递增直到为空）
         thumbs = re.findall(r'<img[^>]+src="(//[^"]+/data/t/[^"]+)"', html)
         self._view_links = []
-        for v in re.findall(r'href="(/photos-view-id-\d+\.html)"', html):
-            full = base + v
+        for v in re.findall(r'["\']((?:https?://www\.wnacg\.\w+)?/photos-view-id-\d+\.html)["\']', html):
+            full = v if v.startswith('http') else base + v
             if full not in self._view_links:
                 self._view_links.append(full)
         pages = set(int(p) for p in re.findall(r'photos-index-page-(\d+)-aid-', html))
@@ -95,8 +95,8 @@ class WnacgCrawler(CrawlerBase):
             except CrawlError:
                 break
             thumbs.extend(re.findall(r'<img[^>]+src="(//[^"]+/data/t/[^"]+)"', h))
-            for v in re.findall(r'href="(/photos-view-id-\d+\.html)"', h):
-                full = _b + v
+            for v in re.findall(r'["\']((?:https?://www\.wnacg\.\w+)?/photos-view-id-\d+\.html)["\']', h):
+                full = v if v.startswith('http') else _b + v
                 if full not in self._view_links:
                     self._view_links.append(full)
         # 视图页链接按页码排序（链接里含 -id-<pid>，pid 顺序即阅读顺序）

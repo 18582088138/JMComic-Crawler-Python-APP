@@ -170,12 +170,23 @@ class ManhuaguiCrawler(CrawlerBase):
                 continue
             if info.get('files') and info.get('path') is not None:
                 return info
-        # 解包失败：dump 页面结构线索（云端校准用）
+        # 解包失败：dump 全部内联脚本与 core JS（云端校准用）
         log(f'漫画柜解包失败，页面调试（HTML {len(html)} 字符）')
         for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
             block = m.group(1).strip()
-            if block and re.search(r'(eval|pack|files|images|jpg|png|webp|hamreus|cid|chapter)', block, re.IGNORECASE):
-                log(f'  script[{len(block)}]: {block[:800]!r}')
-        for src in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html):
-            log(f'  script-src: {src[:160]}')
+            if block:
+                log(f'  inline[{len(block)}]: {block[:500]!r}')
+        from urllib.parse import urljoin
+        for src in re.findall(r'<script[^>]+src=["\']([^"\']*?/scripts/core_[^"\']+)["\']', html):
+            full = urljoin(page_url, src)
+            try:
+                r = self.session.get(full, timeout=20)
+                log(f'  core JS {full[:90]} → {r.status_code}（{len(r.text)} 字符）')
+                if r.status_code == 200:
+                    for kw in ('"files"', 'files:', 'path:', '/ps/', '.jpg', '.webp', 'hamreus', 'getChapter', 'ajax', 'api'):
+                        if kw in r.text:
+                            idx = r.text.find(kw)
+                            log(f'    含 {kw!r}: ...{r.text[max(0, idx - 80):idx + 160]!r}...')
+            except Exception as e:
+                log(f'  core JS 获取失败 → {e}')
         raise CrawlError('漫画柜章节页图床信息解包失败（JS 加密结构可能已变化）')
