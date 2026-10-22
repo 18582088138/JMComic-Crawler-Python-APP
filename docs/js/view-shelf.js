@@ -121,6 +121,7 @@ function renderFilter() {
   const box = $('#siteFilter');
   const chips = [{ key: 'all', name: `全部 ${shelfData.length}` }];
   for (const [key, count] of Object.entries(siteCounts)) {
+    if (!count) continue; // 跳过空站点（下架/清理后的残留索引）
     const s = siteMeta(key);
     chips.push({ key, name: `${s.name} ${count}`, color: s.color });
   }
