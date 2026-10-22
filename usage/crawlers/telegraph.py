@@ -62,6 +62,9 @@ class TelegraphCrawler(CrawlerBase):
                 if '/file/' in full and full not in urls:
                     urls.append(full)
         if not urls:
+            log(f'Telegra 抽图失败，页面调试（HTML {len(html)} 字符）: {html[:700]!r}')
+            for tag in re.findall(r'<img[^>]+>', html)[:8]:
+                log(f'  img: {tag[:180]}')
             raise CrawlError('Telegra 文章页没有找到图片（页面结构可能已变化）')
 
         slug = url.rstrip('/').rsplit('/', 1)[-1][:60] or 'article'
