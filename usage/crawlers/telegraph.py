@@ -56,10 +56,11 @@ class TelegraphCrawler(CrawlerBase):
                 if full not in urls:
                     urls.append(full)
         if not urls:
-            # 兜底：正文内所有 <img>
+            # 兜底：正文内所有 <img>（图片可外链第三方图床，不限 /file/）
             for m in re.finditer(r'<img[^>]+src="([^"]+)"', scope):
                 full = urljoin('https://telegra.ph/', m.group(1))
-                if '/file/' in full and full not in urls:
+                if re.search(r'\.(jpe?g|png|webp|gif)(?:[?#]|$)', full, re.IGNORECASE) \
+                        and full not in urls:
                     urls.append(full)
         if not urls:
             log(f'Telegra 抽图失败，页面调试（HTML {len(html)} 字符）: {html[:700]!r}')
