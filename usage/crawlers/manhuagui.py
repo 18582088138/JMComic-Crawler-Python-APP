@@ -150,13 +150,21 @@ class ManhuaguiCrawler(CrawlerBase):
                 log(f'漫画柜: 外部配置JS 获取失败 {full[:90]} → {e}')
         return texts
 
+    @staticmethod
+    def _unescape_js(s):
+        return s.replace("\\'", "'").replace('\\\\', '\\')
+
     def _decode_chapter(self, html, page_url=''):
         """从章节页解出图床信息。内联 packer / 外部 config JS / 页面直读，逐一尝试。"""
         candidates = []
+        packer_re = re.compile(
+            r"\}\('((?:[^'\\]|\\.)*)',(\d+),(\d+),'((?:[^'\\]|\\.)*)'\.split\('\|'\)", re.DOTALL)
         for text in [html] + self._fetch_config_scripts(html, page_url):
-            m = re.search(r"\}\('(.*?)',(\d+),(\d+),'([^']*)'\.split\('\|'\)", text, re.DOTALL)
+            m = packer_re.search(text)
             if m:
-                packed, radix, count, kw = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4).split('|')
+                packed = self._unescape_js(m.group(1))
+                radix, count = int(m.group(2)), int(m.group(3))
+                kw = self._unescape_js(m.group(4)).split('|')
                 candidates.append(unpack_packer(packed, radix, count, kw))
             candidates.append(text)
 
