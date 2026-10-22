@@ -130,7 +130,23 @@ class SimpleCmsCrawler(CrawlerBase):
         if urls:
             return urls
         # 策略2/3：script JSON 数组 / <img> 目录分组（复用 generic 的启发式）
-        return GenericCrawler._extract_image_urls(html, url)
+        urls = GenericCrawler._extract_image_urls(html, url)
+        if not urls:
+            self._dump_debug(html, url)
+        return urls
+
+    def _dump_debug(self, html, url):
+        """抽图失败时把页面线索打进日志（云端校准用）"""
+        log(f'{self.name}: 抽图失败，页面调试信息 {url}（HTML {len(html)} 字符）')
+        for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
+            block = m.group(1).strip()
+            if not block:
+                continue
+            if re.search(r'(jpg|jpeg|png|webp|files|images|pic|chapter)', block, re.IGNORECASE):
+                log(f'  script[{len(block)}]: {block[:400]!r}')
+        imgs = re.findall(r'<img[^>]+>', html)
+        for tag in imgs[:5]:
+            log(f'  img: {tag[:200]}')
 
     def save_image(self, url, path):
         # 默认以章节页为 Referer（多数图床校验）
