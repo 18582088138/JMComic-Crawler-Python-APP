@@ -37,6 +37,8 @@ class KuaikanCrawler(SimpleCmsCrawler):
                 f'https://www.kuaikanmanhua.com/mini/comic/{comic_id}/chapter/list',
                 f'https://www.kuaikanmanhua.com/v2/webs/comic-next/{comic_id}/chapters',
                 f'https://www.kuaikanmanhua.com/api/comic/{comic_id}/chapters',
+                f'https://m.kuaikanmanhua.com/mobile/comic/{comic_id}/',
+                f'https://m.kuaikanmanhua.com/mini/comic/{comic_id}',
             ])
             if text:
                 meta = self._meta_from_api(text, comic_id, target, batch)

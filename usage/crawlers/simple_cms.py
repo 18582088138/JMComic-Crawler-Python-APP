@@ -150,6 +150,9 @@ class SimpleCmsCrawler(CrawlerBase):
         imgs = re.findall(r'<img[^>]+>', html)
         for tag in imgs[:5]:
             log(f'  img: {tag[:200]}')
+        hrefs = sorted(set(re.findall(r'href="([^"]+)"', html)))
+        for h in hrefs[:25]:
+            log(f'  href: {h[:160]}')
 
     def probe_endpoints(self, desc, urls):
         """尝试候选 API 端点并记录状态（云端校准用），返回第一个 200 且像 JSON 的响应"""
@@ -227,6 +230,20 @@ class MangabzCrawler(SimpleCmsCrawler):
     url_patterns = [r'mangabz\.com/']
     image_host = 'https://i.mangabz.com'
 
+    def get_chapter_image_urls(self, chapter_ref):
+        try:
+            return super().get_chapter_image_urls(chapter_ref)
+        except CrawlError:
+            # 图片数据在外部 JS（chapter.js / newyb.js）里，抓出来看结构（校准用）
+            for js in ('https://css.mangabz.com/v202609180933/mangabz/js/chapter.js',
+                       'https://css.mangabz.com/v202609180933/mangabz/js/newyb.js'):
+                try:
+                    r = self.session.get(js, timeout=20)
+                    log(f'{self.name}: 外部JS {js.split("/")[-1]} → {r.status_code}: {r.text[:700]!r}')
+                except Exception as e:
+                    log(f'{self.name}: 外部JS 获取失败 {js} → {e}')
+            raise
+
 
 class MheeeCrawler(SimpleCmsCrawler):
     site = 'mheee'
@@ -248,8 +265,18 @@ class BaozimhCrawler(SimpleCmsCrawler):
     host = 'www.baozimh.com'
     hint = '漫画链接（baozimh.com 详情页或章节页），默认第 1 批 20 章'
     color = '#eab308'
-    url_patterns = [r'baozimh\.com/']
+    url_patterns = [r'baozimh\.com/', r'bzmgcn\.com/']
     image_host = 'https://static.baozimh.com'
+
+    def parse_target(self, text):
+        # 主域 403 时回退 cn.bzmgcn.com
+        try:
+            return super().parse_target(text)
+        except ValueError:
+            m = re.search(r'(https?://[^\s<>"\']*bzmgcn\.com[^\s<>"\']*)', text)
+            if m:
+                return m.group(1)
+            raise
 
 
 class MkzhanCrawler(SimpleCmsCrawler):
@@ -262,6 +289,54 @@ class MkzhanCrawler(SimpleCmsCrawler):
     color = '#8b5cf6'
     url_patterns = [r'mkzhan\.com/']
     image_host = 'https://cdn.mkzhan.com'
+
+    def fetch_meta(self, target, batch):
+        meta = super().fetch_meta(target, batch)
+        # SSR 只有「开始阅读」第一章链接时，探测目录 API 补全章节列表
+        if meta['totalChapters'] <= 1:
+            cidm = re.search(r'mkzhan\.com/(\d+)', target)
+            cid = cidm.group(1) if cidm else ''
+            if cid:
+                text = self.probe_endpoints('mkzhan-catalog', [
+                    f'https://comic.mkzhan.com/chapter/show/?comic_id={cid}',
+                    f'https://comic.mkzhan.com/comic/chapters?comic_id={cid}',
+                    f'https://comic.mkzhan.com/comic/catalog?comic_id={cid}',
+                    f'https://www.mkzhan.com/api/comic/{cid}/chapters',
+                ])
+                if text:
+                    chapters = self._parse_mkzhan_catalog(text, target)
+                    if chapters:
+                        total = len(chapters)
+                        wanted = self.slice_batch(chapters, batch)
+                        meta['chapters'] = wanted
+                        meta['totalChapters'] = total
+        return meta
+
+    def _parse_mkzhan_catalog(self, text, base_url):
+        import json
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return []
+        items = data.get('data') if isinstance(data, dict) else data
+        # data 可能是 {list: [...]} 或直接数组
+        if isinstance(items, dict):
+            items = items.get('list') or items.get('chapters') or []
+        if not isinstance(items, list):
+            return []
+        out = []
+        for i, it in enumerate(items):
+            if not isinstance(it, dict):
+                continue
+            chid = it.get('chapter_id') or it.get('id')
+            title = it.get('title') or it.get('chapter_title') or it.get('name') or f'第{i + 1}章'
+            if not chid:
+                continue
+            cidm = re.search(r'mkzhan\.com/(\d+)', base_url)
+            cid = cidm.group(1) if cidm else ''
+            out.append({'photo_id': str(chid), 'title': title, 'order': float(i + 1),
+                        'ref': {'url': f'https://www.mkzhan.com/{cid}/{chid}.html'}})
+        return out
 
     def get_chapter_image_urls(self, chapter_ref):
         resp = self.session.get(chapter_ref['url'], timeout=30)

@@ -12,8 +12,11 @@ from .base import CrawlerBase, CrawlError, log
 CM_APIS = [
     'https://api.mangacopy.com/api/v3',
     'https://www.mangacopy.com/api/v3',
+    'https://api.copymanga.com/api/v3',
+    'https://mangacopy.com/api/v3',
     'https://api.copymanga.tv/api/v3',
     'https://api.copymanga.org/api/v3',
+    'https://api.copymanga.net/api/v3',
 ]
 CM_UA = {'User-Agent': 'COPY/2.3.0', 'Accept': 'application/json'}
 
