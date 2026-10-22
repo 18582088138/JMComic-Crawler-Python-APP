@@ -76,11 +76,12 @@ class SimpleCmsCrawler(CrawlerBase):
         raise ValueError(f'无法识别{self.name}目标: {text}（需要本站漫画链接）')
 
     def fetch_meta(self, target, batch):
-        url = target
-        resp = self.session.get(url, timeout=30)
+        resp = self.session.get(target, timeout=30)
         if resp.status_code != 200:
             raise CrawlError(f'{self.name}详情页返回 HTTP {resp.status_code}')
         html = resp.text
+        # 重定向后的最终 URL 作为基准（如 baozimh.com → cn.bzmgcn.com）
+        url = str(getattr(resp, 'url', None) or target)
 
         tm = (re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', html)
               or re.search(r'<h1[^>]*>([^<]+)</h1>', html)
@@ -113,11 +114,11 @@ class SimpleCmsCrawler(CrawlerBase):
                               chapters, total=total, source_url=url)
 
     def get_chapter_image_urls(self, chapter_ref):
-        url = chapter_ref['url']
-        resp = self.session.get(url, timeout=30)
+        resp = self.session.get(chapter_ref['url'], timeout=30)
         if resp.status_code != 200:
             raise CrawlError(f'{self.name}章节页返回 HTTP {resp.status_code}')
         html = resp.text
+        url = str(getattr(resp, 'url', None) or chapter_ref['url'])
         self._chapter_url = url  # save_image 覆写用作 Referer
 
         # 策略1：manhuagui 风格 packer 解包

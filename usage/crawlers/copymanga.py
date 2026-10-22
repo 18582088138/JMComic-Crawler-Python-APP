@@ -22,11 +22,11 @@ class CopymangaCrawler(CrawlerBase):
     site = 'copymanga'
     name = '拷贝漫画'
     id_prefix = 'cm-'
-    home = 'https://www.copymanga.tv'
-    hint = '漫画链接（copymanga.tv/comic/<path_word>）或 path_word'
+    home = 'https://www.mangacopy.com'
+    hint = '漫画链接（mangacopy.com/comic/<path_word>）、path_word 或直接输漫画名搜索'
     color = '#22c55e'
     url_patterns = [r'copymanga\.\w+/comic/', r'mangacopy\.\w+/comic/']
-    image_referer = 'https://www.copymanga.tv/'
+    image_referer = 'https://www.mangacopy.com/'
     image_headers = CM_UA
 
     def parse_target(self, text):
@@ -36,7 +36,22 @@ class CopymangaCrawler(CrawlerBase):
             return f'{m.group(1)}:{m.group(2) or ""}'
         if re.fullmatch(r'[A-Za-z0-9_-]+', text):
             return f'{text}:'
+        if text:
+            return f'search:{text}'  # 非链接非 path_word：按漫画名搜索
         raise ValueError(f'无法识别拷贝漫画目标: {text}')
+
+    def resolve_search(self, keyword):
+        """漫画名 → path_word（取搜索首条结果）"""
+        try:
+            results = self.cm_get('/comic/search', {'q': keyword, 'limit': 10, 'offset': 0})
+        except CrawlError:
+            raise CrawlError(f'拷贝漫画搜索 "{keyword}" 失败（API 不可用）')
+        items = (results.get('list') if isinstance(results, dict) else None) or []
+        if not items:
+            raise CrawlError(f'拷贝漫画搜索 "{keyword}" 没有结果')
+        pw = items[0].get('path_word')
+        log(f'拷贝漫画搜索 "{keyword}" → {items[0].get("name")} ({pw})')
+        return pw
 
     def cm_get(self, path, params=None):
         errs = []
@@ -67,7 +82,10 @@ class CopymangaCrawler(CrawlerBase):
         raise CrawlError('拷贝漫画API全部不可用:\n' + '\n'.join(errs))
 
     def fetch_meta(self, target, batch):
-        path_word, chapter_uuid = target.split(':', 1)
+        if target.startswith('search:'):
+            path_word, chapter_uuid = self.resolve_search(target[len('search:'):]), ''
+        else:
+            path_word, chapter_uuid = target.split(':', 1)
         comic = self.cm_get(f'/comic/{path_word}')['comic']
         title = comic['name']
         authors = [a['name'] for a in comic.get('author', [])]
