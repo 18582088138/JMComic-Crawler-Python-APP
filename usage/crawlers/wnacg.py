@@ -78,8 +78,13 @@ class WnacgCrawler(CrawlerBase):
         am = re.search(r'作者[：:]\s*<a[^>]*>([^<]+)</a>', html)
         authors = [am.group(1).strip()] if am else []
 
-        # 收集全部分页的缩略图（第一页已含，后续页递增直到为空）
+        # 收集全部分页的缩略图与视图页链接（第一页已含，后续页递增直到为空）
         thumbs = re.findall(r'<img[^>]+src="(//[^"]+/data/t/[^"]+)"', html)
+        self._view_links = []
+        for v in re.findall(r'href="(/photos-view-id-\d+\.html)"', html):
+            full = base + v
+            if full not in self._view_links:
+                self._view_links.append(full)
         pages = set(int(p) for p in re.findall(r'photos-index-page-(\d+)-aid-', html))
         for p in sorted(pages):
             if p <= 1:
@@ -90,6 +95,13 @@ class WnacgCrawler(CrawlerBase):
             except CrawlError:
                 break
             thumbs.extend(re.findall(r'<img[^>]+src="(//[^"]+/data/t/[^"]+)"', h))
+            for v in re.findall(r'href="(/photos-view-id-\d+\.html)"', h):
+                full = _b + v
+                if full not in self._view_links:
+                    self._view_links.append(full)
+        # 视图页链接按页码排序（链接里含 -id-<pid>，pid 顺序即阅读顺序）
+        self._view_links.sort(key=lambda u: int(re.search(r'-id-(\d+)', u).group(1)))
+        log(f'wnacg: 视图页链接 {len(self._view_links)} 个')
 
         # 去重保序
         seen, ordered = set(), []
@@ -105,12 +117,33 @@ class WnacgCrawler(CrawlerBase):
                               total=1, source_url=f'https://www.wnacg.com/photos-index-aid-{aid}.html')
 
     def get_chapter_image_urls(self, chapter_ref):
-        # chapter_ref 为缩略图 URL 列表；/data/t/ → /data/ 得原图
+        # 策略1（当前主路）：视图页 /photos-view-id-<pid>.html 解析原图
+        # （缩略图 /data/t/→/data/ 规则 2026-10 实测已失效：图床分离，全尺寸 404）
+        if self._view_links:
+            urls = []
+            for i, vurl in enumerate(self._view_links, 1):
+                time.sleep(0.3)
+                try:
+                    resp = self.session.get(vurl, timeout=30)
+                except Exception as e:
+                    log(f'wnacg 视图页请求失败 {vurl}: {e}')
+                    continue
+                if resp.status_code != 200:
+                    log(f'wnacg 视图页 {vurl} → HTTP {resp.status_code}')
+                    continue
+                m = (re.search(r'<img[^>]+id="picarea"[^>]+src="([^"]+)"', resp.text)
+                     or re.search(r'src="((?:https?:)?//[^"]*(?:%s)[^"]*\.(?:jpe?g|png|webp)[^"]*)"' % 'img', resp.text))
+                if m:
+                    u = m.group(1)
+                    urls.append('https:' + u if u.startswith('//') else u)
+                elif i == 1:
+                    log(f'wnacg 视图页未解出原图，页面调试: {resp.text[:600]!r}')
+            if len(urls) >= max(3, len(self._view_links) // 2):
+                return urls
+            log(f'wnacg 视图页只解出 {len(urls)}/{len(self._view_links)} 张，回退缩略图变换')
+        # 策略2：缩略图 /data/t/ → /data/ 变换（旧规则，可能 404）
         urls = []
         for t in chapter_ref:
             full = t.replace('/data/t/', '/data/')
             urls.append('https:' + full if full.startswith('//') else full)
-        if chapter_ref:
-            log(f'wnacg 缩略图示例: {chapter_ref[0][:120]}')
-            log(f'wnacg 原图示例: {urls[0][:120]}')
         return urls

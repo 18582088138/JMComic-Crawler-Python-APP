@@ -143,6 +143,9 @@ class ManhuaguiCrawler(CrawlerBase):
                 log(f'漫画柜: 外部配置JS {full[:90]} → {r.status_code}（{len(r.text)} 字符）')
                 if r.status_code == 200:
                     texts.append(r.text)
+                    log(f'漫画柜: 配置JS 开头: {r.text[:400]!r}')
+                    for kw in ('"files"', '"path"', '"sl"', '.jpg', '.webp', 'hamreus', 'function(h,u,n,t,e,r)'):
+                        log(f'漫画柜: 配置JS 含 {kw!r}: {kw in r.text}')
             except Exception as e:
                 log(f'漫画柜: 外部配置JS 获取失败 {full[:90]} → {e}')
         return texts

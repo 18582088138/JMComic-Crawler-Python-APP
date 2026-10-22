@@ -12,7 +12,6 @@ const DETECT = [
   { site: 'telegraph', re: /telegra\.ph\//i },
   { site: 'wnacg', re: /wnacg\.\w+\/photos-/i },
   { site: 'ehentai', re: /e-hentai\.org\/g\//i },
-  { site: 'bika', re: /picacomic\.com\/|\b[0-9a-f]{24}\b/i },
   { site: 'jmcomic', re: /18comic\.\w+\/(?:album|photo)\/|\bjm\s*[:：]?\s*\d+\b|^\d+$/i },
 ];
 

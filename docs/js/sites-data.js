@@ -87,17 +87,6 @@ window.SITES = [
     "batchSize": 1
   },
   {
-    "key": "bika",
-    "name": "哔咔漫画",
-    "home": "https://www.picacomic.com",
-    "mirrors": [],
-    "hint": "无网页版：漫画ID 需从哔咔 App 分享链接获取（24位十六进制），默认爬最新几章",
-    "color": "#f472b6",
-    "prefix": "bk-",
-    "singleChapter": false,
-    "batchSize": 20
-  },
-  {
     "key": "jmcomic",
     "name": "JMComic",
     "home": "https://18comic.vip",

@@ -7,7 +7,6 @@
 - 动漫之家已下架（站点失效）；拷贝漫画已恢复注册（mangacopy API 域名更新）。
 """
 from .base import CrawlerBase, CrawlError, log
-from .bika import BikaCrawler
 from .ehentai import EhentaiCrawler
 from .generic import GenericCrawler, GenericCrawlFailed
 from .jmcomic_crawler import JmcomicCrawler
@@ -24,6 +23,7 @@ from .wnacg import WnacgCrawler
 #   kuaikan    —— SPA，已知端点全 404，SSR 无章节数据
 #   mangabz    —— 章节图在外部混淆 JS 中，通用抽取只拿到 5 张噪音图
 #   mheee      —— 章节结构未解，且多次探测后触发 403
+#   bika       —— API 域名现为 picaapi.picacomic.com（旧域名 DNS 失效），但旧签名密钥已被服务端拒绝（401 error 1005），需新版 App 密钥或登录 JWT
 
 # 注册顺序即 auto 识别优先级（JM 的数字车号兜底放最后单独处理）
 CRAWLER_CLASSES = [
@@ -34,7 +34,6 @@ CRAWLER_CLASSES = [
     TelegraphCrawler,
     WnacgCrawler,
     EhentaiCrawler,
-    BikaCrawler,
     JmcomicCrawler,
 ]
 
