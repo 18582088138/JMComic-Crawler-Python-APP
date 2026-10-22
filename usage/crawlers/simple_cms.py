@@ -92,6 +92,10 @@ class SimpleCmsCrawler(CrawlerBase):
         authors = [am.group(1).strip()] if am else []
 
         links = extract_chapter_links(html, url)
+        if links:
+            log(f'{self.name}: 章节链接候选 {len(links)} 个，示例: {[u for u, _ in links[:3]]}')
+        else:
+            log(f'{self.name}: 章节链接候选 0 个（页面 {url}）')
         if not links:
             # 详情页找不到章节链接：当单章页处理（用户可能直接贴了章节链接）
             log(f'{self.name}: 未发现章节链接，按单章页抽图: {url}')
