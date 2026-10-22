@@ -174,8 +174,11 @@ class ManhuaguiCrawler(CrawlerBase):
         log(f'漫画柜解包失败，页面调试（HTML {len(html)} 字符）')
         for m in re.finditer(r'<script[^>]*>(.*?)</script>', html, re.DOTALL):
             block = m.group(1).strip()
-            if block:
-                log(f'  inline[{len(block)}]: {block[:500]!r}')
+            if block and len(block) > 200:  # packer 参数在末尾，重点 dump 尾部
+                log(f'  inline[{len(block)}] 开头: {block[:200]!r}')
+                log(f'  inline[{len(block)}] 结尾: {block[-500:]!r}')
+            elif block:
+                log(f'  inline[{len(block)}]: {block[:200]!r}')
         from urllib.parse import urljoin
         for src in re.findall(r'<script[^>]+src=["\']([^"\']*?/scripts/core_[^"\']+)["\']', html):
             full = urljoin(page_url, src)

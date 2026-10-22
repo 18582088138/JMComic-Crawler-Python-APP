@@ -73,6 +73,7 @@ class WnacgCrawler(CrawlerBase):
             log(f'wnacg 自动发现 → aid-{m.group(1)}')
             aid = m.group(1)
         base, html = self._get_gallery(aid)
+        self._aid = aid
         tm = re.search(r'<h2[^>]*>([^<]+)</h2>', html) or re.search(r'<title>([^<|]+)', html)
         title = tm.group(1).strip() if tm else f'wnacg {aid}'
         am = re.search(r'作者[：:]\s*<a[^>]*>([^<]+)</a>', html)
@@ -117,7 +118,11 @@ class WnacgCrawler(CrawlerBase):
                               total=1, source_url=f'https://www.wnacg.com/photos-index-aid-{aid}.html')
 
     def get_chapter_image_urls(self, chapter_ref):
-        # 策略1（当前主路）：视图页 /photos-view-id-<pid>.html 解析原图
+        # 策略0（最优）：幻灯页 /photos-slide-aid-<aid>.html 一页含全部原图
+        slide = self._try_slide(chapter_ref)
+        if slide:
+            return slide
+        # 策略1：视图页 /photos-view-id-<pid>.html 解析原图
         # （缩略图 /data/t/→/data/ 规则 2026-10 实测已失效：图床分离，全尺寸 404）
         if self._view_links:
             urls = []
@@ -147,3 +152,37 @@ class WnacgCrawler(CrawlerBase):
             full = t.replace('/data/t/', '/data/')
             urls.append('https:' + full if full.startswith('//') else full)
         return urls
+
+    def _try_slide(self, chapter_ref):
+        """幻灯页一次性给出全部图片（结构好则完胜逐视图页）"""
+        from .generic import GenericCrawler
+        aid = chapter_ref[0] if chapter_ref and re.search(r'aid-(\d+)', str(chapter_ref)) else None
+        if not aid:
+            # 从视图链接推不出 aid 时，用 meta 阶段的缓存
+            aid = getattr(self, '_aid', None)
+        if not aid:
+            return []
+        for base in MIRRORS:
+            try:
+                resp = self.session.get(f'{base}/photos-slide-aid-{aid}.html', timeout=30)
+                if resp.status_code != 200:
+                    log(f'wnacg 幻灯页 {base} → HTTP {resp.status_code}')
+                    continue
+                html = resp.text
+                urls = []
+                # script 数组 / img 标签里的全尺寸图
+                for m in re.finditer(r'((?:https?:)?//[^\s"\'<>]+?\.(?:jpe?g|png|webp)(?:\?[^\s"\'<>]*)?)', html):
+                    u = m.group(1)
+                    u = 'https:' + u if u.startswith('//') else u
+                    if re.search(r'/(?:data|img|image|photo|gallery)/', u) and '/t/' not in u \
+                            and not re.search(r'(logo|icon|banner|avatar|cover)', u, re.IGNORECASE):
+                        if u not in urls:
+                            urls.append(u)
+                if len(urls) >= 3:
+                    log(f'wnacg 幻灯页命中 {len(urls)} 页（{base}）')
+                    return urls
+                if urls or len(html) > 2000:
+                    log(f'wnacg 幻灯页只抽到 {len(urls)} 张，页面片段: {html[:500]!r}')
+            except Exception as e:
+                log(f'wnacg 幻灯页 {base} → {e}')
+        return []
