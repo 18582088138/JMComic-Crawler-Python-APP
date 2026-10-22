@@ -51,6 +51,13 @@ function registerSW() {
   navigator.serviceWorker.register('sw.js')
     .then(reg => navigator.serviceWorker.ready.then(() => { swReady = true; updateOfflineUI(); }))
     .catch(() => {});
+  // 新 SW 接管（部署了新前端）时自动刷新一次（进度已自动保存）
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    setTimeout(() => location.reload(), 600);
+  });
 }
 
 /* ================= 全本离线缓存 ================= */

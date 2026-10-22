@@ -24,6 +24,13 @@ function switchTab(name) {
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  // 新 SW 接管（部署了新前端）时自动刷新一次，避免旧缓存 JS 继续服役
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    setTimeout(() => location.reload(), 600);
+  });
 }
 
 function watchOnline() {

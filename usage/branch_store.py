@@ -113,6 +113,41 @@ def sync_frontend(repo, pages_dir, docs_dir):
             shutil.copy2(src, dest)
         elif os.path.isdir(src):
             shutil.copytree(src, dest)
+    bump_sw_version(pages_dir)
+
+
+def bump_sw_version(pages_dir):
+    """每次装配按前端内容哈希刷新 sw.js 的 VERSION。
+
+    没有这一步，SW 脚本不变时浏览器不会检查更新，旧缓存（含旧版 JS）会一直
+    残留——2026-10-22 用户就因旧 JS 的 dispatch payload 持续 422。
+    VERSION 变化 ⇒ 浏览器安装新 SW ⇒ activate 清旧缓存 ⇒ 页面 controllerchange 自动刷新。
+    """
+    import hashlib
+    import re as _re
+    sw_path = os.path.join(pages_dir, 'sw.js')
+    if not os.path.isfile(sw_path):
+        return
+    h = hashlib.md5()
+    for entry in FRONTEND_ENTRIES:
+        p = os.path.join(pages_dir, entry)
+        if os.path.isfile(p):
+            h.update(entry.encode())
+            h.update(open(p, 'rb').read())
+        elif os.path.isdir(p):
+            for root, _dirs, files in os.walk(p):
+                for f in sorted(files):
+                    fp = os.path.join(root, f)
+                    h.update(os.path.relpath(fp, pages_dir).encode())
+                    h.update(open(fp, 'rb').read())
+    version = 'v' + h.hexdigest()[:10]
+    with open(sw_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    text, n = _re.subn(r"const VERSION = '[^']*';", f"const VERSION = '{version}';", text, count=1)
+    if n:
+        with open(sw_path, 'w', encoding='utf-8') as f:
+            f.write(text)
+        log(f'sw.js VERSION → {version}')
 
 
 def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
