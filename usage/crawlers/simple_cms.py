@@ -286,10 +286,42 @@ class MkzhanCrawler(SimpleCmsCrawler):
                 f'https://www.mkzhan.com/api/chapter/{cid}/{chid}',
             ])
             if text:
-                urls = re.findall(r'https?://[^"\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\s]*)?', text)
-                urls = [u for i, u in enumerate(urls) if u not in urls[:i]]
-                if len(urls) >= 3:
+                urls = self._parse_mkzhan_json(text)
+                if urls:
                     log(f'{self.name}: API 命中 {len(urls)} 页')
                     return urls
         # 回退通用策略
         return super().get_chapter_image_urls(chapter_ref)
+
+    @staticmethod
+    def _parse_mkzhan_json(text):
+        """comic.mkzhan.com/chapter/content/ 返回 {code, data: [{image_url|...}]}，URL 可能为协议相对"""
+        import json
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return []
+        items = data.get('data') if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            return []
+        urls = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            u = it.get('image_url') or it.get('img_url') or it.get('url') or it.get('image') or ''
+            if not u:
+                continue
+            if u.startswith('//'):
+                u = 'https:' + u
+            elif u.startswith('/'):
+                u = 'https://static.mkzcdn.com' + u
+            if re.search(r'\.(jpg|jpeg|png|webp)', u, re.IGNORECASE):
+                urls.append(u)
+        if len(urls) < 3:
+            # 兜底：全文正则（含协议相对）
+            raw = re.findall(r'((?:https?:)?//[^"\s]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"\s]*)?)', text)
+            for u in raw:
+                u = 'https:' + u if u.startswith('//') else u
+                if u not in urls:
+                    urls.append(u)
+        return urls if len(urls) >= 3 else []
