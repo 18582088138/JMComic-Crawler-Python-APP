@@ -122,7 +122,7 @@ class ManhuaguiCrawler(CrawlerBase):
         resp = self.session.get(url, timeout=30)
         if resp.status_code != 200:
             raise CrawlError(f'漫画柜章节页返回 HTTP {resp.status_code}')
-        info = self._decode_chapter(resp.text)
+        info = self._decode_chapter(resp.text, page_url=url)
         path, files, sl = info['path'], info['files'], info.get('sl', {})
         urls = []
         for fn in files:
@@ -132,16 +132,30 @@ class ManhuaguiCrawler(CrawlerBase):
             urls.append(u)
         return urls
 
-    @staticmethod
-    def _decode_chapter(html):
-        """从章节页解出图床信息。公开实现通行两种形态，逐一尝试。"""
-        # 形态1：eval 包裹的 packer（function(h,u,n,t,e,r)）
-        m = re.search(r"\}\('(.*?)',(\d+),(\d+),'([^']*)'\.split\('\|'\)", html, re.DOTALL)
+    def _fetch_config_scripts(self, html, page_url):
+        """新版章节页把图床配置放在外部 JS（//cf.mhgui.com/scripts/config_*.js），抓取其内容"""
+        from urllib.parse import urljoin
+        texts = []
+        for src in re.findall(r'<script[^>]+src=["\']([^"\']*?/scripts/config_[^"\']+)["\']', html):
+            full = urljoin(page_url, src)
+            try:
+                r = self.session.get(full, timeout=20)
+                log(f'漫画柜: 外部配置JS {full[:90]} → {r.status_code}（{len(r.text)} 字符）')
+                if r.status_code == 200:
+                    texts.append(r.text)
+            except Exception as e:
+                log(f'漫画柜: 外部配置JS 获取失败 {full[:90]} → {e}')
+        return texts
+
+    def _decode_chapter(self, html, page_url=''):
+        """从章节页解出图床信息。内联 packer / 外部 config JS / 页面直读，逐一尝试。"""
         candidates = []
-        if m:
-            packed, radix, count, kw = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4).split('|')
-            candidates.append(unpack_packer(packed, radix, count, kw))
-        candidates.append(html)
+        for text in [html] + self._fetch_config_scripts(html, page_url):
+            m = re.search(r"\}\('(.*?)',(\d+),(\d+),'([^']*)'\.split\('\|'\)", text, re.DOTALL)
+            if m:
+                packed, radix, count, kw = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4).split('|')
+                candidates.append(unpack_packer(packed, radix, count, kw))
+            candidates.append(text)
 
         for text in candidates:
             jm = re.search(r'(\{[^{}]*"files"\s*:\s*\[.*?\][^{}]*\})', text, re.DOTALL)

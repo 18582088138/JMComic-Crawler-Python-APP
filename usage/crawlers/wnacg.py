@@ -110,4 +110,7 @@ class WnacgCrawler(CrawlerBase):
         for t in chapter_ref:
             full = t.replace('/data/t/', '/data/')
             urls.append('https:' + full if full.startswith('//') else full)
+        if chapter_ref:
+            log(f'wnacg 缩略图示例: {chapter_ref[0][:120]}')
+            log(f'wnacg 原图示例: {urls[0][:120]}')
         return urls
