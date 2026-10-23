@@ -128,9 +128,17 @@ function boot() {
 }
 
 function initWithManifest(m) {
-  if (!m.chapters || !m.chapters.length) { fatal('本子内容为空'); return; }
+  if (!m.chapters || !m.chapters.length) { fatal('本子不存在或尚未爬取'); return; }
   S.manifest = m;
   if (!S.id) S.id = m.id;
+  // 重抓（批次合并/更新）后清掉旧图片缓存，避免 SW 继续供旧图
+  const stamp = store.get('offline_ts_' + S.id, '');
+  if (m.updatedAt && stamp && stamp !== m.updatedAt && navigator.serviceWorker) {
+    try {
+      navigator.serviceWorker.controller?.postMessage({ type: 'purge', ids: [S.id] });
+    } catch (e) { /* noop */ }
+  }
+  if (m.updatedAt) store.set('offline_ts_' + S.id, m.updatedAt);
   document.title = '《' + m.title + '》- 云书架';
   $('#comicTitle').textContent = m.title;
   if (m.hasZip && m.zip) {
@@ -158,6 +166,7 @@ function initWithManifest(m) {
   initSettings();
   updateOfflineUI();
   applyMode(S.mode, true);
+  startSweeper();
 }
 
 function fatal(t, sub) {
@@ -374,8 +383,19 @@ function renderScroll(first) {
 }
 function loadScrollImg(img) {
   img.src = img.dataset.src;
-  img.addEventListener('error', () => {
+  img.dataset.retries = '0';
+  img.addEventListener('error', function onErr() {
     const box = img.parentElement;
+    const retries = parseInt(img.dataset.retries || '0', 10);
+    if (retries < 2 && !/^blob:/.test(img.dataset.src)) {
+      // 网络抖动自动重试（最多 2 次，指数退避）
+      img.dataset.retries = String(retries + 1);
+      setTimeout(() => {
+        const u = img.dataset.src;
+        img.src = u + (u.indexOf('?') >= 0 ? '&' : '?') + 'retry=' + Date.now();
+      }, 1500 * (retries + 1));
+      return;
+    }
     if (box.querySelector('.failed')) return;
     const f = document.createElement('div');
     f.className = 'failed';
@@ -384,11 +404,37 @@ function loadScrollImg(img) {
     f.addEventListener('click', e => {
       e.stopPropagation();
       f.remove();
+      img.dataset.retries = '0';
       const u = img.dataset.src;
       img.src = /^blob:/.test(u) ? u : (u + (u.indexOf('?') >= 0 ? '&' : '?') + 'retry=' + Date.now());
     });
     box.appendChild(f);
-  }, { once: true });
+  });
+}
+
+/* 巡检兜底：懒加载观察器时序或网络中断可能漏图，定期扫描未加载的可见页 */
+let sweepTimer = null;
+function startSweeper() {
+  stopSweeper();
+  sweepTimer = setInterval(() => {
+    if (S.mode !== 'scroll') return;
+    document.querySelectorAll('.spage img[data-src]').forEach(img => {
+      const rect = img.parentElement.getBoundingClientRect();
+      const near = rect.top < innerHeight * 2 && rect.bottom > -innerHeight * 2;
+      if (near && !img.src) loadScrollImg(img);
+    });
+    // 已加载但宽度异常小（疑似半加载）的图片自动重试一次
+    document.querySelectorAll('.spage img:not([data-src])').forEach(img => {
+      if (img.complete && img.naturalWidth === 0 && !img.dataset.swept) {
+        img.dataset.swept = '1';
+        const u = img.src.split('?')[0].split('#')[0];
+        img.src = u + '?retry=' + Date.now();
+      }
+    });
+  }, 3000);
+}
+function stopSweeper() {
+  if (sweepTimer) { clearInterval(sweepTimer); sweepTimer = null; }
 }
 function scrollToPage(n, instant) {
   const el = document.querySelector('.spage[data-p="' + n + '"]');
@@ -442,11 +488,18 @@ function renderPaged() {
 }
 $('#pimg').addEventListener('load', function () { this.classList.add('ok'); });
 $('#pretry').addEventListener('click', () => renderPaged());
-function loadOne(url, cb) {
+function loadOne(url, cb, retried) {
   if (preloadCache[url] === 'ok') { cb(true); return; }
   const im = new Image();
   im.onload = () => { preloadCache[url] = 'ok'; cb(true); };
-  im.onerror = () => cb(false);
+  im.onerror = () => {
+    if (!retried && !/^blob:/.test(url)) {
+      // 自动重试一次再交还给用户
+      setTimeout(() => loadOne(url + '?retry=' + Date.now(), cb, true), 1500);
+      return;
+    }
+    cb(false);
+  };
   im.src = url;
 }
 function preloadAround() {

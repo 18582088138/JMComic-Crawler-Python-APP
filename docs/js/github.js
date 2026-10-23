@@ -46,3 +46,11 @@ export async function repoInfo(repo) {
 export function newIssueUrl(repo, title, body) {
   return `https://github.com/${repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
+
+export async function cancelRun(repo, runId, token) {
+  const r = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}/cancel`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' },
+  });
+  return r.status;
+}

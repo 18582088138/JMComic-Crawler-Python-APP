@@ -36,7 +36,8 @@ function render() {
     `<span class="sitechip-static" style="--sc:${esc(sm.color)}">${esc(sm.name)}</span>` +
     `<i>${esc(m.author || '未知')}</i><i>${m.pageCount || 0}页</i>` +
     `<i>已上架 ${uploaded}/${total} 章</i><i>${fmtSize(m.sizeBytes)}</i>` +
-    `<i>${relTime(m.updatedAt)}更新</i>`;
+    `<i>${relTime(m.updatedAt)}更新</i>` +
+    `<i class="bid-detail" title="书架ID">ID: ${esc(m.id)}</i>`;
   $('#bookCover').innerHTML = m.id
     ? `<img src="comics/${encodeURIComponent(m.id)}/cover.jpg?t=${encodeURIComponent(m.updatedAt || '')}" alt="">`
     : '';

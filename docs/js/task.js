@@ -1,12 +1,106 @@
-/* 任务进度状态机：提交后轮询书架索引 + Actions 运行状态 */
-import { $, store, toast, fmtId } from './util.js';
-import { detectRepo, fetchRecentRuns } from './github.js';
+/* 任务系统：本地队列 + 进度跟踪 + 重试/取消
 
-let pending = store.get('pending', null); // {id, target, source, ts}
+模型：
+- 多行粘贴 → 一个 run 内串行完成（dispatch 一次，多行 TARGET）
+- 连续分批提交 → 本地队列（jm_crawl_queue），当前 run 完成后自动派发下一个
+  （云端并发组只保留 1 运行 + 1 待运行，快速连发会丢任务，所以串行化在前端做）
+- 失败任务存入 jm_last_failed，爬取页提供「重试」
+- 取消：排队中的直接移除；运行中的 run 有 token 时调 API 取消
+*/
+import { $, store, toast } from './util.js';
+import { detectRepo, fetchRecentRuns, cancelRun } from './github.js';
+
+let queue = store.get('crawl_queue', []);        // [{targets, source, batch, mode, ts}]
+let active = store.get('crawl_active', null);    // {targets, ts, source, runId?}
+let lastFailed = store.get('last_failed', null); // {targets, ts, reason}
 let pollTimer = null, elapsedTimer = null, lastRunPoll = 0;
-let onDoneCallback = null;
+let onChangeCallback = null;
 
-export function getPending() { return pending; }
+export function getState() {
+  return { queue, active, lastFailed };
+}
+
+export function hasPending() {
+  return !!(active || queue.length);
+}
+
+/* ================= 入队与派发 ================= */
+
+export function enqueue(targets, source, batch, mode) {
+  queue.push({ targets, source, batch, mode, ts: Date.now() });
+  store.set('crawl_queue', queue);
+  startLoop();
+}
+
+function dispatchNext() {
+  if (active || !queue.length) return false;
+  const item = queue.shift();
+  store.set('crawl_queue', queue);
+  active = { targets: item.targets, source: item.source, ts: Date.now(), mode: item.mode, batch: item.batch };
+  store.set('crawl_active', active);
+  return true; // 由调用方真正 dispatch（view-crawl 里做）
+}
+
+/* 外部接口：领取待派发任务（view-crawl 调用，真正发 dispatch/issue） */
+export function claimNextToDispatch() {
+  return dispatchNext() ? active : null;
+}
+
+export function markDispatchFailed() {
+  // dispatch 没发出去：放回队首
+  if (active) {
+    queue.unshift({ targets: active.targets, source: active.source, batch: active.batch, mode: active.mode, ts: active.ts });
+    store.set('crawl_queue', queue);
+    active = null;
+    store.set('crawl_active', null);
+  }
+}
+
+export function markDispatched() {
+  startLoop();
+  if (onChangeCallback) onChangeCallback();
+}
+
+/* ================= 取消 ================= */
+
+export function cancelQueued(index) {
+  queue.splice(index, 1);
+  store.set('crawl_queue', queue);
+  if (onChangeCallback) onChangeCallback();
+}
+
+export async function cancelActive() {
+  const repo = detectRepo();
+  const token = store.get('token', '');
+  if (active && active.runId && token && repo) {
+    const status = await cancelRun(repo, active.runId, token);
+    if (status === 202) toast('已请求取消该次运行');
+    else toast('取消请求失败：HTTP ' + status);
+  }
+  // 无论云端是否取消成功，本地先终止跟踪
+  if (active) {
+    lastFailed = { targets: active.targets, ts: Date.now(), reason: '已手动取消' };
+    store.set('last_failed', lastFailed);
+  }
+  active = null;
+  store.set('crawl_active', null);
+  if (onChangeCallback) onChangeCallback();
+  // 队列下一个立刻可派发（view-crawl 负责真正发）
+  return true;
+}
+
+/* ================= 重试 ================= */
+
+export function retryFailed() {
+  if (!lastFailed) return null;
+  enqueue(lastFailed.targets, 'auto', lastFailed.batch || 1, lastFailed.mode || 'both');
+  lastFailed = null;
+  store.set('last_failed', null);
+  if (onChangeCallback) onChangeCallback();
+  return true;
+}
+
+/* ================= 轮询循环 ================= */
 
 function setStep(name, state, sub) {
   const el = document.querySelector('.step[data-s="' + name + '"]');
@@ -16,58 +110,25 @@ function setStep(name, state, sub) {
   if (sub) { const s = el.querySelector('small'); if (s) s.textContent = sub; }
 }
 
-function resetSteps() {
-  ['dispatch', 'run', 'deploy', 'done'].forEach(s => setStep(s, null));
-  const link = $('#runLink');
-  if (link) link.style.display = 'none';
-}
-
-export function showTask(id) {
-  $('#taskCard').style.display = 'block';
-  $('#taskId').textContent = fmtId(id);
-  resetSteps();
-  $('#goReadBtn').style.display = 'none';
-}
-
-export function setPending(p) {
-  pending = p;
-  store.set('pending', p);
-}
-
-export function startTracking(onDone) {
-  onDoneCallback = onDone;
+export function startLoop(onChange) {
+  if (onChange) onChangeCallback = onChange;
+  stopLoop();
+  pollOnce(true);
+  pollTimer = setInterval(() => pollOnce(false), 15000);
   startElapsed();
-  stopPolling();
-  pollShelf();
-  pollRun(true);
-  pollTimer = setInterval(() => {
-    if (!pending) { stopPolling(); return; }
-    if (Date.now() - pending.ts > 20 * 60 * 1000) {
-      setStep('deploy', 'fail', '等待超时：请到 Actions 页面或 Issue 中查看任务状态');
-      stopPolling();
-      return;
-    }
-    pollShelf();
-    pollRun(false);
-  }, 15000);
 }
 
-export function stopTracking() {
-  pending = null;
-  store.set('pending', null);
-  stopPolling();
-  stopElapsed();
-  $('#taskCard').style.display = 'none';
+function stopLoop() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
-
-function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
 function startElapsed() {
   stopElapsed();
   elapsedTimer = setInterval(() => {
-    if (!pending) { stopElapsed(); return; }
-    const s = Math.floor((Date.now() - pending.ts) / 1000);
-    $('#elapsed').textContent = '已等待 ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    const el = $('#elapsed');
+    if (!el || !active) { stopElapsed(); return; }
+    const s = Math.floor((Date.now() - active.ts) / 1000);
+    el.textContent = '已等待 ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }, 1000);
 }
 
@@ -77,83 +138,76 @@ function stopElapsed() {
   if (el) el.textContent = '';
 }
 
+function pollOnce(force) {
+  if (!active) return;
+  if (Date.now() - active.ts > 30 * 60 * 1000) {
+    finishActive('failed', '等待超时（30 分钟）');
+    return;
+  }
+  pollShelf();
+  pollRun(force);
+}
+
 function pollShelf() {
   fetch('data/comics.json?t=' + Date.now(), { cache: 'no-store' })
     .then(r => (r.ok ? r.json() : null))
     .then(data => {
-      if (!data || !pending) return;
-      const comics = data.comics || [];
-      let hit = comics.find(c => String(c.id) === String(pending.id));
-      if (!hit) {
-        // 兜底：接受提交后新上架的任何本子（auto 识别出的 ID 可能与输入不一致）
-        hit = comics.find(c => new Date(c.updatedAt || 0).getTime() >= pending.ts - 15000);
-      }
-      if (hit) taskDone(hit.id);
-    })
-    .catch(() => {});
+      if (!data || !active) return;
+      // 书架出现本次时间窗内的新本子 → 至少一个任务完成（进度展示用）
+      const hit = (data.comics || []).find(c =>
+        new Date(c.updatedAt || 0).getTime() >= active.ts - 15000);
+      if (hit) setStep('deploy', 'doing', '检测到新本子上架：《' + (hit.title || '').slice(0, 20) + '》…');
+    }).catch(() => {});
 }
 
 function pollRun(force) {
   const repo = detectRepo();
-  if (!repo) return;
-  // 无 token 也可以查公开仓库的运行状态，但限流 60 次/小时，放慢到 75 秒一次
+  if (!repo || !active) return;
   const minGap = store.get('token', '') ? 0 : 75000;
   const now = Date.now();
   if (!force && now - lastRunPoll < minGap) return;
   lastRunPoll = now;
   fetchRecentRuns(repo).then(runs => {
-    if (!runs || !pending) return;
-    const run = runs.find(x => new Date(x.created_at).getTime() >= pending.ts - 90000);
-    const waited = Date.now() - pending.ts;
+    if (!runs || !active) return;
+    const run = runs.find(x => new Date(x.created_at).getTime() >= active.ts - 90000);
     if (!run) {
-      if (waited > 120000) setStep('run', 'doing', '未找到运行记录：若刚提交请稍候；若用 Issue 方式请确认已点「Create」');
+      if (Date.now() - active.ts > 120000) setStep('run', 'doing', '未找到运行记录：若刚提交请稍候；若用 Issue 方式请确认已点「Create」');
       return;
     }
+    active.runId = run.id;
     const link = $('#runLink');
-    link.href = run.html_url;
-    link.style.display = 'inline-block';
+    if (link) { link.href = run.html_url; link.style.display = 'inline-block'; }
     if (run.status === 'queued') {
       setStep('dispatch', 'done'); setStep('run', 'doing', '排队中…');
     } else if (run.status === 'in_progress') {
       setStep('dispatch', 'done');
-      setStep('run', 'doing', waited > 8 * 60000 ? '下载时间较长（本子较大或源站较慢），可点下方链接查看日志' : '正在云端下载…');
+      setStep('run', 'doing', Date.now() - active.ts > 8 * 60000 ? '下载时间较长（本子较大或源站较慢），可点下方链接查看日志' : '正在云端下载…');
     } else if (run.status === 'completed') {
       if (run.conclusion === 'success') {
-        setStep('dispatch', 'done'); setStep('run', 'done'); setStep('deploy', 'doing');
+        finishActive('success');
       } else {
-        setStep('run', 'fail', '工作流执行失败：' + run.conclusion + '，点击查看日志');
-        stopPolling();
+        finishActive('failed', '工作流执行失败：' + run.conclusion);
       }
     }
   }).catch(() => {});
 }
 
-function taskDone(foundId) {
-  if (!pending) return;
-  const id = foundId || pending.id;
-  setStep('dispatch', 'done'); setStep('run', 'done'); setStep('deploy', 'done'); setStep('done', 'done');
-  const btn = $('#goReadBtn');
-  btn.style.display = 'flex';
-  btn.onclick = () => { location.href = 'reader.html?id=' + encodeURIComponent(id); };
-  toast('🎉 已上架书架！');
-  pending = null;
-  store.set('pending', null);
-  stopPolling();
+function finishActive(status, reason) {
+  const finished = active;
+  active = null;
+  store.set('crawl_active', null);
+  if (status === 'success') {
+    lastFailed = null;
+    store.set('last_failed', null);
+    toast('🎉 任务完成，已上架书架！');
+  } else {
+    lastFailed = { targets: finished.targets, ts: Date.now(), reason: reason || '执行失败', batch: finished.batch, mode: finished.mode };
+    store.set('last_failed', lastFailed);
+    toast('❌ ' + (reason || '执行失败'), 4000);
+  }
+  stopLoop();
   stopElapsed();
-  if (onDoneCallback) onDoneCallback(id);
-}
-
-export function resumeTrackingIfNeeded(onDone) {
-  if (!pending) return;
-  showTask(pending.id);
-  setStep('dispatch', 'done');
-  setStep('run', 'doing', '恢复任务跟踪…');
-  startTracking(onDone);
-}
-
-export function checkNow() {
-  if (!pending) { toast('当前没有进行中的任务'); return; }
-  pollShelf();
-  pollRun(true);
-  toast('已检查最新状态');
+  if (onChangeCallback) onChangeCallback(status, finished);
+  // 队列还有任务则立即派发下一个（view-crawl 负责）
+  if (queue.length && onChangeCallback) onChangeCallback('next');
 }

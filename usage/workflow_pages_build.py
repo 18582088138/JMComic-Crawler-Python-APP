@@ -273,9 +273,10 @@ def main():
 
     # ---------- mock：本地构建调试，不碰分支 ----------
     if mock:
+        mock_input = raw_input.split()[0] if raw_input.split() else raw_input  # mock 只跑第一个目标
         docs_dir = os.path.abspath(env('JM_PAGES_DOCS_DIR', './docs'))
         site_dir = docs_dir  # 兼容旧布局：docs/comics + docs/data/comics.json
-        meta, raw_dir, crawler = mock_crawl(source, raw_input, raw_dir, batch)
+        meta, raw_dir, crawler = mock_crawl(source, mock_input, raw_dir, batch)
         entry = site_builder.build_site(meta, raw_dir, site_dir, mode)
         site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
         # 旧布局兼容：index.json 落到 data/comics.json
@@ -288,47 +289,78 @@ def main():
         write_outputs(entry, crawler.site)
         return
 
-    # ---------- 真实爬取 ----------
+    # ---------- 真实爬取（支持多目标：逐行/逐任务，单个 run 内串行完成） ----------
+    targets = split_targets(raw_input, env('JM_PAGES_ISSUE_BODY'))
+    log(f'任务数: {len(targets)}，模式: {mode}，保留: {keep}，批次: {batch}')
+
+    worktrees = {}       # site -> site_dir（多目标任务期间保持打开，最后统一装配）
+    touched = []         # (site_dir, site, entry_id)
+    results = []         # ('ok'|'fail', target, entry_or_error)
+    first_entry = None
     try:
-        meta, raw_dir_actual, crawler = registry.crawl(source, raw_input, raw_dir, batch)
-    except GenericCrawlFailed as e:
-        log(f'通用兜底爬取失败: {e}')
-        branch_store.append_wishlist(e.url, e.domain, str(e)[:300])
-        report_status('failed', raw_input, 'generic', error=str(e)[:500], wishlisted=e.domain)
-        cleanup_raw(raw_dir)
+        for ti, target in enumerate(targets, 1):
+            log(f'—— 任务 {ti}/{len(targets)}: {target[:80]}')
+            try:
+                meta, raw_dir_actual, crawler = registry.crawl(source, target, raw_dir, batch)
+                site = meta.get('site') or crawler.site
+                if publish:
+                    if site not in worktrees:
+                        sd = os.path.join(REPO_DIR, 'build', f'site_{site}')
+                        branch_store.open_branch_worktree(REPO_DIR, f'data/{site}', sd)
+                        worktrees[site] = sd
+                    site_dir = worktrees[site]
+                    entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
+                    site_builder.apply_retention(site_dir, keep + RETENTION_GRACE, protect_id=meta['id'])
+                    branch_store.push_data_branch(site_dir, site, f'data: [{site}] +{entry["id"]}', push=True)
+                    touched.append((site_dir, site, entry['id']))
+                else:
+                    site_dir = os.path.join(REPO_DIR, 'build', 'site_out')
+                    entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
+                    site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
+                results.append(('ok', target, entry))
+                if first_entry is None:
+                    first_entry = entry
+                write_summary(entry)
+            except GenericCrawlFailed as e:
+                log(f'任务 {ti} 通用兜底失败: {e}')
+                branch_store.append_wishlist(e.url, e.domain, str(e)[:300])
+                results.append(('fail', target, str(e)[:300]))
+            except Exception as e:
+                log(f'任务 {ti} 失败: {type(e).__name__}: {e}')
+                results.append(('fail', target, f'{type(e).__name__}: {e}'[:300]))
+            cleanup_raw(raw_dir)
+    finally:
+        if publish:
+            if touched:
+                docs_dir = os.path.join(REPO_DIR, 'docs')
+                branch_store.assemble_gh_pages(REPO_DIR, docs_dir, touched, push=True)
+            for site, sd in worktrees.items():
+                branch_store.close_worktree(REPO_DIR, sd)
+
+    ok_entries = [r[2] for r in results if r[0] == 'ok']
+    fails = [(r[1], r[2]) for r in results if r[0] == 'fail']
+    if not ok_entries:
+        report_status('failed', raw_input, source,
+                      error='；'.join(f'{t[:40]}: {e}' for t, e in fails)[:500])
         raise SystemExit(1)
-    except Exception as e:
-        report_status('failed', raw_input, source, error=f'{type(e).__name__}: {e}'[:500])
-        cleanup_raw(raw_dir)
-        raise
+    if fails:
+        log(f'部分失败 {len(fails)}/{len(targets)}: {[t for t, _ in fails]}')
+    report_status('success' if not fails else 'partial', raw_input,
+                  ok_entries[0].get('site', source),
+                  shelf_id=ok_entries[0]['id'], title=ok_entries[0]['title'],
+                  done=[e['id'] for e in ok_entries][:20],
+                  failed=[{'target': t[:80], 'error': e[:200]} for t, e in fails][:20])
+    write_outputs(ok_entries[0], ok_entries[0].get('site', ''))
 
-    site = meta.get('site') or crawler.site
-    log(f'平台: {site}，目标: {raw_input[:80]}，模式: {mode}，保留: {keep}')
 
-    if publish:
-        # 构建产物直接落在 data/<site> 分支的 worktree 里
-        site_dir = os.path.join(REPO_DIR, 'build', 'site_worktree')
-        branch_store.open_branch_worktree(REPO_DIR, f'data/{site}', site_dir)
-        try:
-            entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
-            # 宽限期保留：超过 keep+GRACE 才硬删，keep..keep+GRACE 之间由前端提示用户「下载或清理」
-            site_builder.apply_retention(site_dir, keep + RETENTION_GRACE, protect_id=meta['id'])
-            docs_dir = os.path.join(REPO_DIR, 'docs')
-            branch_store.publish(REPO_DIR, site, site_dir, docs_dir, push=True,
-                                 changed_id=entry['id'],
-                                 message=f'data: [{site}] +{entry["id"]}')
-        finally:
-            branch_store.close_worktree(REPO_DIR, site_dir)
-    else:
-        site_dir = os.path.join(REPO_DIR, 'build', 'site_out')
-        entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
-        site_builder.apply_retention(site_dir, keep, protect_id=meta['id'])
-        log('JM_PAGES_PUBLISH=0，仅构建未推送')
-
-    write_summary(entry)
-    write_outputs(entry, site)
-    report_status('success', raw_input, site, shelf_id=entry['id'], title=entry['title'])
-    cleanup_raw(raw_dir_actual)
+def split_targets(raw_input, issue_body=''):
+    """多目标解析：按行/空白切分；issue 正文支持每行 `task: <链接>` 追加任务"""
+    targets = [t for t in re.split(r'\s+', (raw_input or '').strip()) if t]
+    if issue_body:
+        for m in re.finditer(r'(?im)^\s*task\s*[:：]\s*(\S+)\s*$', issue_body):
+            if m.group(1) not in targets:
+                targets.append(m.group(1))
+    return targets
 
 
 if __name__ == '__main__':

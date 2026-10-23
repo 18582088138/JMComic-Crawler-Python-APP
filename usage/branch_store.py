@@ -225,20 +225,31 @@ def publish(repo, site, site_dir, docs_dir, push=True, message=None, changed_id=
     changed_id：本次新建/重建的本子 id，gh-pages 侧只增量复制它（下架目录照常删除）。
     """
     message = message or f'data: 更新 {site} 书库'
-    changed = commit_and_push(site_dir, f'data/{site}', message, push=push)
+    changed = push_data_branch(site_dir, site, message, push=push)
+    assemble_gh_pages(repo, docs_dir, [(site_dir, site, changed_id)], push=push)
+    return changed
 
+
+def push_data_branch(site_dir, site, message, push=True):
+    """只提交并推送 data/<site> 分支（多目标任务时每站一次，装配统一最后做）"""
+    return commit_and_push(site_dir, f'data/{site}', message, push=push)
+
+
+def assemble_gh_pages(repo, docs_dir, syncs, push=True):
+    """一次性装配 gh-pages。syncs: [(site_dir, site, changed_id_or_None)]"""
     pages_dir = os.path.join(repo, 'build', 'gh_pages_worktree')
     existed = open_branch_worktree(repo, PAGES_BRANCH, pages_dir)
     try:
         sync_frontend(repo, pages_dir, docs_dir)
-        sync_site_comics(site_dir, pages_dir, site,
-                         only_ids=None if not existed else ({changed_id} if changed_id else set()))
+        for site_dir, site, changed_id in syncs:
+            sync_site_comics(site_dir, pages_dir, site,
+                             only_ids=None if not existed else ({changed_id} if changed_id else set()))
         if not existed:
             log('gh-pages 分支不存在，已初始化为完整站点')
-        commit_and_push(pages_dir, PAGES_BRANCH, f'pages: 装配 {site} 更新', push=push)
+        return commit_and_push(pages_dir, PAGES_BRANCH,
+                               f'pages: 装配 {len(syncs)} 站更新 [skip ci]', push=push)
     finally:
         close_worktree(repo, pages_dir)
-    return changed
 
 
 # ============================================================

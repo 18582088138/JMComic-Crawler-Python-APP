@@ -176,6 +176,7 @@ function renderShelf() {
       <div class="badges">${badges}</div>
       <span class="sitechip" style="--sc:${esc(sm.color)}">${esc(sm.name)}</span></div>
       <div class="binfo"><div class="t">${esc(c.title)}</div>
+      <div class="bid" title="书架ID：点按复制" data-copyid="${esc(c.id)}">${esc(c.id)}</div>
       <div class="m"><i>${esc(c.author || '未知')}</i><i>${c.pageCount || 0}页</i><i>${relTime(c.updatedAt)}</i></div>
       <div class="bacts">${readBtn}${dlBtn}</div></div></div>`;
   }).join('');
@@ -183,6 +184,17 @@ function renderShelf() {
   box.querySelectorAll('.cover img').forEach(img => {
     img.addEventListener('load', () => img.classList.add('ok'));
     img.addEventListener('error', () => img.remove());
+  });
+  box.querySelectorAll('.bid').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.copyid;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(id).then(() => toast('已复制 ID：' + id), () => toast('复制失败'));
+      } else {
+        toast('ID：' + id);
+      }
+    });
   });
   box.querySelectorAll('.favbtn').forEach(btn => {
     btn.addEventListener('click', e => {
