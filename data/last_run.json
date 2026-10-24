@@ -1,8 +1,8 @@
 {
-  "ts": "2026-10-24T01:52:42Z",
+  "ts": "2026-10-24T01:53:41Z",
   "status": "failed",
   "target": "https://e-hentai.org/g/3716440/2552808e5c/",
   "source": "auto",
-  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/40051707552",
+  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/40051780411",
   "error": "https://e-hentai.org/g/3716440/2552808e5: CrawlError: E-Hentai 图片页 https://e-hentai.org/s/26afb0c105/1926243-189 返回 HTTP 404"
 }
