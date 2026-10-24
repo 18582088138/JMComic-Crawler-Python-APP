@@ -1,13 +1,8 @@
 {
-  "ts": "2026-10-24T01:38:58Z",
-  "status": "success",
-  "target": "https://e-hentai.org/g/3716450/b6eb1e0691/",
-  "source": "ehentai",
-  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/40050327963",
-  "shelf_id": "eh-3716450",
-  "title": "[Marin Mate] Reikan Ressha ~Yuurei Sharyou de Musuu no Te ni Yoru Kairaku Zeme~ [Chinese] [紫藤汉化组]",
-  "done": [
-    "eh-3716450"
-  ],
-  "failed": []
+  "ts": "2026-10-24T01:52:42Z",
+  "status": "failed",
+  "target": "https://e-hentai.org/g/3716440/2552808e5c/",
+  "source": "auto",
+  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/40051707552",
+  "error": "https://e-hentai.org/g/3716440/2552808e5: CrawlError: E-Hentai 图片页 https://e-hentai.org/s/26afb0c105/1926243-189 返回 HTTP 404"
 }
