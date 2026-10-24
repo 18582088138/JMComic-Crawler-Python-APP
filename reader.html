@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>阅读 - 云书架</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="stylesheet" href="css/reader.css">
+<script src="vendor/jszip.min.js"></script>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<div class="bar" id="topbar">
+  <button class="tbtn" id="backBtn" aria-label="返回">
+    <svg viewBox="0 0 24 24"><path d="M15.5 4.5 8 12l7.5 7.5 1.8-1.8L11.6 12l5.7-5.7z"/></svg>
+  </button>
+  <div id="titleBox"><div class="t1" id="comicTitle">加载中…</div><div class="t2" id="chTitle"></div></div>
+  <button class="tbtn" id="offlineBtn" title="缓存全本离线看" style="display:none;position:relative">
+    <svg viewBox="0 0 24 24"><path d="M12 3v10.6l3.3-3.3 1.4 1.4-5.7 5.7-5.7-5.7 1.4-1.4 3.3 3.3V3h2zM5 19h14v2H5v-2z"/></svg>
+    <span class="dlprog" id="dlProg" style="display:none"></span>
+  </button>
+  <button class="tbtn" id="zipBtn" title="打包下载" style="display:none">
+    <svg viewBox="0 0 24 24"><path d="M12 3v10.2l-3.6-3.6-1.8 1.8 5.4 5.4 5.4-5.4-1.8-1.8-3.6 3.6V3h2zm-7 15h14v3H5v-3z" transform="translate(0,-1)"/></svg>
+  </button>
+  <button class="tbtn" id="chBtn" title="章节">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg>
+  </button>
+  <button class="tbtn" id="setBtn" title="设置">
+    <svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L14.9 3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L6.4 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM12.7 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+  </button>
+</div>
+
+<!-- 底栏 -->
+<div class="bar" id="bottombar">
+  <button class="tbtn modebtn on" id="mScroll">卷轴</button>
+  <button class="tbtn modebtn" id="mPaged">翻页</button>
+  <input type="range" id="pageSlider" min="1" max="1" value="1">
+  <span id="pageLabel">1/1</span>
+  <button class="tbtn" id="prevChBtn" title="上一章"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z"/></svg></button>
+  <button class="tbtn" id="nextChBtn" title="下一章"><svg viewBox="0 0 24 24"><path d="M16 6h2v12h-2V6zM6 18l8.5-6L6 6v12z"/></svg></button>
+</div>
+
+<!-- 卷轴视图 -->
+<div id="scrollView"></div>
+
+<!-- 翻页视图 -->
+<div id="pageView">
+  <div id="pimgWrap"><img id="pimg" alt=""></div>
+  <div class="zones" id="zones">
+    <div class="zone l" data-z="l"></div>
+    <div class="zone c" data-z="c"></div>
+    <div class="zone r" data-z="r"></div>
+  </div>
+  <div class="hint-arrow l" id="arrL">‹</div>
+  <div class="hint-arrow r" id="arrR">›</div>
+</div>
+<div id="spinner"></div>
+<button id="pretry">⚠️ 加载失败，点击重试</button>
+
+<!-- 章节结束卡 -->
+<div id="endCard"><div class="inner">
+  <div class="big">🎉</div>
+  <h3 id="endTitle">本章完</h3>
+  <p id="endSub"></p>
+  <div class="btns">
+    <button id="endHomeBtn">返回书架</button>
+    <button class="primary" id="endNextBtn">下一章</button>
+  </div>
+</div></div>
+
+<!-- 章节弹层 -->
+<div class="mask" id="mask"></div>
+<div class="sheet" id="chSheet">
+  <div class="grab"></div><h3>章节目录</h3>
+  <div id="chList"></div>
+</div>
+
+<!-- 设置弹层 -->
+<div class="sheet" id="setSheet">
+  <div class="grab"></div><h3>阅读设置</h3>
+  <div class="setrow">
+    <div class="lab">默认阅读模式<small>下次打开本子时生效</small></div>
+    <div class="optseg" data-k="defMode">
+      <button data-v="scroll">卷轴</button><button data-v="paged">翻页</button>
+    </div>
+  </div>
+  <div class="setrow">
+    <div class="lab">翻页方向<small>日漫习惯选「右翻左」</small></div>
+    <div class="optseg" data-k="dir">
+      <button data-v="ltr">左翻右</button><button data-v="rtl">右翻左</button>
+    </div>
+  </div>
+  <div class="setrow">
+    <div class="lab">翻页适应方式<small>长图建议「适应宽度」</small></div>
+    <div class="optseg" data-k="fit">
+      <button data-v="contain">适应屏幕</button><button data-v="width">适应宽度</button>
+    </div>
+  </div>
+  <div class="setrow" id="offlineRow" style="display:none">
+    <div class="lab">离线缓存<small id="offlineHint">把全本图片缓存到本机，断网也能看</small></div>
+    <div class="optseg"><button id="doOfflineBtn">开始缓存</button></div>
+  </div>
+  <div class="dlbar" id="dlBar"><i></i></div>
+</div>
+
+<div id="toast"></div>
+
+<div id="fatal"><div>
+  <div class="art">😢</div>
+  <h2 id="fatalTitle">本子不存在或尚未爬取</h2>
+  <p id="fatalSub">请回到书架先提交爬取任务</p>
+  <a href="index.html">返回书架</a>
+</div></div>
+
+<!-- 离线 ZIP 入口 -->
+<div id="localGate"><div>
+  <div class="art">📂</div>
+  <h2>离线阅读</h2>
+  <p>选择已下载到本机的 ZIP 压缩包<br>无需联网爬取，图片直接在浏览器内解包阅读</p>
+  <button class="lg-btn" id="pickZipBtn">选择 ZIP 文件</button>
+  <div class="lg-status" id="lgStatus"></div>
+  <a class="lg-back" href="index.html">← 返回书架</a>
+  <input type="file" id="zipFile" accept=".zip,application/zip" style="display:none">
+</div></div>
+
+<script type="module" src="js/reader.js"></script>
+</body>
+</html>

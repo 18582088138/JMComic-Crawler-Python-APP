@@ -1,0 +1,38 @@
+{
+  "site": "nhentai",
+  "updatedAt": "2026-10-23T14:21:49Z",
+  "comics": [
+    {
+      "id": "nh-272252",
+      "site": "nhentai",
+      "title": "nhentai 272252",
+      "author": "未知",
+      "pageCount": 28,
+      "chapterCount": 1,
+      "totalChapters": 1,
+      "sourceUrl": "https://nhentai.net/g/272252/",
+      "cover": "comics/nh-272252/cover.jpg",
+      "hasReader": true,
+      "hasZip": true,
+      "zipName": "nh-272252.zip",
+      "updatedAt": "2026-10-23T14:21:49Z",
+      "sizeBytes": 39670075
+    },
+    {
+      "id": "nh-177013",
+      "site": "nhentai",
+      "title": "nhentai 177013",
+      "author": "未知",
+      "pageCount": 225,
+      "chapterCount": 1,
+      "totalChapters": 1,
+      "sourceUrl": "https://nhentai.net/g/177013/",
+      "cover": "comics/nh-177013/cover.jpg",
+      "hasReader": true,
+      "hasZip": false,
+      "zipName": null,
+      "updatedAt": "2026-10-22T22:46:09Z",
+      "sizeBytes": 130576447
+    }
+  ]
+}
