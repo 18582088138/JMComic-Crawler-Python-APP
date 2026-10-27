@@ -1,4 +1,69 @@
-<!-- 顶部标题 & 统计徽章 -->
+<div align="center">
+  <h1 style="margin-top: 0" align="center">云书架</h1>
+  <p align="center"><strong>多平台漫画云端爬取与阅读 —— GitHub Actions + Pages 驱动，网页打开即用，无需自建服务器</strong></p>
+</div>
+
+> [!NOTE]
+> 本项目正在重构中，后续会改为更通用的名字（当前仓库名仅为历史沿用）。核心爬取引擎来自上游 [JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python)，见文末「上游库」一节。
+
+## 这是什么
+
+把「漫画爬取」做成一个免运维的云端应用：
+
+- 在网页上粘贴漫画链接（或车号），GitHub Actions 在云端完成下载、打包、发布；
+- GitHub Pages 托管书架与阅读器；数据按站点存放在独立的 Git 孤立分支，master 历史永不膨胀；
+- Service Worker 真·离线：看过的漫画图片自动缓存，断网可读；
+- 一切配置都在网页内完成（Token 一键创建引导），也可免 Token 用提 Issue 的方式提交任务。
+
+## 在线站点支持（7 站 + 通用兜底）
+
+| 站点 | 形态 | 备注 |
+| --- | --- | --- |
+| JMComic 禁漫天堂 | 整本下载 | 复用上游 jmcomic 下载引擎 |
+| MangaDex | 连载多话 | 官方 API，支持批次爬取 |
+| nhentai / wnacg / E-Hentai | 单章画廊 | 镜像回退 / 视图页解析 / 匿名配额 |
+| 漫客栈 | 连载多话 | 官方章节 API |
+| Telegra | 即时阅读文章 | 静态页直抽 |
+
+未收录站点的链接会先用通用爬虫尝试，失败自动记入设置页「愿望清单」作为后续适配候选。新增一个站点 = 在 `usage/crawlers/` 加一个继承基类的文件并注册一行。
+
+## 云书架功能一览
+
+- **四分页 UI**：爬取 / 找本子（站点直达卡片，长按复制地址）/ 书架 / 设置；手机底部标签栏，Pad/PC 侧边导航轨
+- **多任务队列**：一次粘贴多个链接云端串行完成；分批提交自动排队；失败任务一键重试，运行中可取消
+- **连载管理**：多话作品按「一本」合并，20 章/批按需扩抓；作品详情页有目录清单、续读、「抓取更多章节」
+- **书架管理**：站点筛选、喜欢置顶、分页浏览、ZIP 打包下载、满库「下载或清理」提示、勾选批量删除（分支同步清理）
+- **阅读器**：卷轴/翻页双模式、进度记忆（按章节 key，合并不错位）、全本离线缓存、本地 ZIP 免网阅读
+- **可观测**：任务进度网页内跟踪、最近一次失败原因直接展示（含逐目标明细）
+
+## 架构速览
+
+```
+网页(Pages) ──dispatch/issue──▶ Actions 云端爬取
+                                   │
+              data/<site> 孤立分支（每站一个，单 commit force-push）
+                                   │
+              gh-pages 装配（前端 + 全站聚合索引）──▶ Pages 部署
+```
+
+详细设计见 [ARCHITECTURE.md](ARCHITECTURE.md)（分支模型、爬虫契约、多任务队列、离线缓存、排障速查）。
+
+## 快速开始（部署自己的云书架）
+
+1. Fork 本仓库；
+2. Settings → Pages → Source 选 `Deploy from a branch`，分支 `gh-pages` 目录 `/(root)`；
+3. Settings → Actions → General → Workflow permissions 选 `Read and write`；
+4. Settings → General → Features 勾选 `Issues`（免 Token 提交方式需要）；
+5. 打开 `https://<你的用户名>.github.io/<仓库名>/`，在设置页一键创建 Token 并粘贴保存，完成。
+
+> 本项目仅限个人学习使用。
+
+---
+
+# 上游库：jmcomic（Python API for JMComic）
+
+> 以下为本仓库内置下载引擎的上游文档（来自 [hect0x7/JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python)），使用 Python API 或 Actions 下载 JM 本子请看这里。
+
 <div align="center">
   <h1 style="margin-top: 0" align="center">Python API for JMComic</h1>
 
