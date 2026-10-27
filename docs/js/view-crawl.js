@@ -214,7 +214,7 @@ function doDispatch(claimed) {
       document.querySelector('.step[data-s="dispatch"]').classList.add('doing');
       task.startLoop(onTaskChange);
       window.open(newIssueUrl(repo, title, lines.join('\n')), '_blank');
-      toast('已打开 Issue 创建页，提交后自动开始爬取', 3500);
+      toast('未配置 Token，需打开一次 GitHub 页面提交；到设置页「导入配置」后不再跳转', 4500);
     }).catch(() => { task.markDispatchFailed(); toast('网络异常，无法预检仓库状态'); renderQueueCard(); });
   }
 }

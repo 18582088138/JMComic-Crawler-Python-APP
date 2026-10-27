@@ -115,6 +115,7 @@ function submitCleanup(btn) {
         location.hash = '#/settings';
         return;
       }
+      toast('未配置 Token，需打开一次 GitHub 页面提交；到设置页「导入配置」后不再跳转', 4500);
       window.open(newIssueUrl(repo, '[jm] __cleanup__',
         'keep: ' + keepLimit() + '\n\n保留清理任务，由书架「确认清理」引导创建。'), '_blank');
       onSubmitted();
@@ -363,6 +364,7 @@ function submitDelete(btn) {
         location.hash = '#/settings';
         return;
       }
+      toast('未配置 Token，需打开一次 GitHub 页面提交；到设置页「导入配置」后不再跳转', 4500);
       window.open(newIssueUrl(repo, '[jm] __delete__',
         'delete: ' + ids.join(',') + '\n\n删除任务，由书架批量删除引导创建。'), '_blank');
       onSubmitted();
