@@ -49,6 +49,9 @@ def build_cover(src_image, dest, max_width=480, quality=85):
         img.save(dest, 'JPEG', quality=quality, optimize=True)
 
 
+ZIP_MAX_BYTES = 95 * 1024 * 1024  # GitHub 单文件 100MB 硬限制，留 5MB 余量
+
+
 def dir_size(path):
     total = 0
     for root, _dirs, files in os.walk(path):
@@ -178,12 +181,22 @@ def build_site(meta, raw_dir, site_dir, mode):
             build_cover(src, cover_path)
 
     # 4. ZIP 合包（含全部已合并章节）
+    # GitHub 单文件 100MB 硬限制：超限的 zip 会让整个 git push 被拒、连累管线，
+    # 护栏：超限则放弃打包（在线阅读不受影响），manifest 标记 zipTooLarge
     zip_name = f'JM{aid}.zip' if aid.isdigit() else f'{aid}.zip'
     zip_built = False
+    zip_note = ''
     if has_zip:
+        zip_path = os.path.join(comic_dir, zip_name)
         make_zip_merged(comic_dir, raw_dir, meta, chapters,
-                        os.path.join(comic_dir, zip_name), f'JM{aid}' if aid.isdigit() else aid)
-        zip_built = True
+                        zip_path, f'JM{aid}' if aid.isdigit() else aid)
+        zsize = os.path.getsize(zip_path)
+        if zsize > ZIP_MAX_BYTES:
+            os.remove(zip_path)
+            zip_note = f'zip 体积 {zsize / 1048576:.0f}MB 超出 GitHub 100MB 单文件限制，未打包'
+            log(f'⚠️ {zip_note}')
+        else:
+            zip_built = True
 
     manifest = {
         'id': aid,
@@ -199,6 +212,7 @@ def build_site(meta, raw_dir, site_dir, mode):
         'hasReader': has_read or bool(old and old.get('hasReader')),
         'hasZip': zip_built or bool(old and old.get('hasZip') and os.path.isfile(os.path.join(comic_dir, zip_name))),
         'zip': zip_name if (zip_built or (old and old.get('zip'))) else None,
+        'zipNote': zip_note or (old or {}).get('zipNote', ''),
         'pageCount': page_count,
         'chapterCount': len(chapters),
         'chapters': chapters,

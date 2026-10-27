@@ -99,6 +99,7 @@
   <section class="view" id="view-shelf">
     <div class="shelftools">
       <div class="sitefilter" id="siteFilter"></div>
+      <button class="refresh" id="assembleBtn" title="扫描各站分支，把未装配的更新发布到书架">⚙ 装配</button>
       <button class="refresh" id="manageShelf">管理</button>
       <button class="refresh" id="refreshShelf">刷新</button>
     </div>
@@ -150,6 +151,13 @@
           都不填时，爬取将改用「提 Issue」方式提交。
         </div>
         <input type="password" id="tokenInput" placeholder="粘贴 ghp_... / github_pat_...">
+
+        <b class="sec-title">任务超时（每个任务，分钟）</b>
+        <div class="limitrow" style="margin-top:0">
+          单任务最长等待
+          <input type="number" id="taskTimeoutInput" value="15" min="5" max="120">
+          <span>超时后任务判失败并进队列卡片的重试位，不阻塞后续任务</span>
+        </div>
 
         <b class="sec-title">书架保留数量（每个站点）</b>
         <div class="limitrow" style="margin-top:0">

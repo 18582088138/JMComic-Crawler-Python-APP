@@ -291,16 +291,32 @@ def main():
 
     # ---------- 真实爬取（支持多目标：逐行/逐任务，单个 run 内串行完成） ----------
     targets = split_targets(raw_input, env('JM_PAGES_ISSUE_BODY'))
-    log(f'任务数: {len(targets)}，模式: {mode}，保留: {keep}，批次: {batch}')
+    force = env('JM_PAGES_FORCE') == '1' or bool(re.search(r'(?im)^\s*force\s*[:：]\s*1\s*$', env('JM_PAGES_ISSUE_BODY')))
+    run_budget = int(env('JM_PAGES_RUN_BUDGET', '50') or '50')  # 分钟：软超时，防单任务卡死全队
+    log(f'任务数: {len(targets)}，模式: {mode}，保留: {keep}，批次: {batch}，强制: {force}')
 
     worktrees = {}       # site -> site_dir（多目标任务期间保持打开，最后统一装配）
     touched = []         # (site_dir, site, entry_id)
-    results = []         # ('ok'|'fail', target, entry_or_error)
+    results = []         # ('ok'|'skip'|'fail', target, entry_or_error)
     first_entry = None
+    run_start = time.time()
     try:
         for ti, target in enumerate(targets, 1):
+            elapsed_min = (time.time() - run_start) / 60
+            if elapsed_min > run_budget:
+                for rest in targets[ti - 1:]:
+                    results.append(('fail', rest, f'超出本次运行时间预算（{run_budget} 分钟），未执行'))
+                log(f'超出时间预算，剩余 {len(targets) - ti + 1} 个任务未执行')
+                break
             log(f'—— 任务 {ti}/{len(targets)}: {target[:80]}')
             try:
+                # 任务去重：预判书架 ID，分支已有且已爬完 → 跳过（FORCE 除外）
+                if publish and not force:
+                    skip_entry = check_already_crawled(source, target, worktrees)
+                    if skip_entry:
+                        log(f'已爬取过《{skip_entry.get("title", "")[:40]}》，跳过（如需重爬请勾选强制）')
+                        results.append(('skip', target, skip_entry))
+                        continue
                 meta, raw_dir_actual, crawler = registry.crawl(source, target, raw_dir, batch)
                 site = meta.get('site') or crawler.site
                 if publish:
@@ -330,27 +346,77 @@ def main():
                 results.append(('fail', target, f'{type(e).__name__}: {e}'[:300]))
             cleanup_raw(raw_dir)
     finally:
+        # 装配与爬取解耦：装配失败不阻断爬取结论（定时巡检/手动装配会补上）
+        assembled = False
         if publish:
             if touched:
-                docs_dir = os.path.join(REPO_DIR, 'docs')
-                branch_store.assemble_gh_pages(REPO_DIR, docs_dir, touched, push=True)
+                try:
+                    docs_dir = os.path.join(REPO_DIR, 'docs')
+                    branch_store.assemble_gh_pages(REPO_DIR, docs_dir, touched, push=True)
+                    assembled = True
+                except Exception as e:
+                    log(f'⚠️ 装配失败（爬取成果已在 data 分支，稍后会自动/手动装配）: {type(e).__name__}: {e}')
             for site, sd in worktrees.items():
                 branch_store.close_worktree(REPO_DIR, sd)
 
     ok_entries = [r[2] for r in results if r[0] == 'ok']
+    skip_entries = [r[2] for r in results if r[0] == 'skip']
     fails = [(r[1], r[2]) for r in results if r[0] == 'fail']
-    if not ok_entries:
-        report_status('failed', raw_input, source,
+    done_entries = ok_entries + skip_entries
+    if not done_entries:
+        report_status('failed', raw_input, source, assembled=assembled,
                       error='；'.join(f'{t[:40]}: {e}' for t, e in fails)[:500])
         raise SystemExit(1)
     if fails:
         log(f'部分失败 {len(fails)}/{len(targets)}: {[t for t, _ in fails]}')
+    if skip_entries:
+        log(f'已存在跳过 {len(skip_entries)}/{len(targets)}: {[s.get("id") for s in skip_entries]}')
     report_status('success' if not fails else 'partial', raw_input,
-                  ok_entries[0].get('site', source),
-                  shelf_id=ok_entries[0]['id'], title=ok_entries[0]['title'],
-                  done=[e['id'] for e in ok_entries][:20],
+                  done_entries[0].get('site', source),
+                  shelf_id=done_entries[0]['id'], title=done_entries[0]['title'],
+                  assembled=assembled,
+                  done=[e['id'] for e in done_entries][:20],
+                  skipped=[e['id'] for e in skip_entries][:20],
                   failed=[{'target': t[:80], 'error': e[:200]} for t, e in fails][:20])
-    write_outputs(ok_entries[0], ok_entries[0].get('site', ''))
+    write_outputs(done_entries[0], done_entries[0].get('site', ''))
+    output_file = env('GITHUB_OUTPUT')
+    if output_file:
+        with open(output_file, 'a', encoding='utf-8') as f:
+            f.write(f'assembled={"1" if assembled else "0"}\n')
+
+
+def check_already_crawled(source, target, worktrees):
+    """任务去重：预判书架 ID，若分支已收录且已爬完（或单章站）→ 返回该条目（跳过），否则 None"""
+    try:
+        crawler = registry.detect_crawler(target) if source == 'auto' else registry.get_crawler(source)
+    except Exception:
+        return None
+    if crawler.site == 'generic':
+        return None  # 兜底无法预判，不去重
+    pred = crawler.predict_id(target)
+    site = crawler.site
+    if site not in worktrees:
+        sd = os.path.join(REPO_DIR, 'build', f'site_{site}')
+        branch_store.open_branch_worktree(REPO_DIR, f'data/{site}', sd)
+        worktrees[site] = sd
+    idx = site_builder.read_index(worktrees[site])
+    comics = idx.get('comics', [])
+    existing = None
+    if pred:
+        existing = next((c for c in comics if c.get('id') == pred), None)
+    if not existing:
+        # sourceUrl 兜底匹配（结尾斜杠归一）
+        norm = target.rstrip('/')
+        existing = next((c for c in comics
+                         if c.get('sourceUrl') and c['sourceUrl'].rstrip('/') == norm), None)
+    if not existing:
+        return None
+    total = existing.get('totalChapters') or 0
+    done = existing.get('chapterCount') or 0
+    is_single = registry.get_crawler(site).single_chapter
+    if is_single or (total and done >= total):
+        return existing
+    return None  # 连载未爬完 → 允许继续（合并新章节）
 
 
 def split_targets(raw_input, issue_body=''):

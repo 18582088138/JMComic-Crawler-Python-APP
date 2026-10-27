@@ -41,6 +41,13 @@ class MangadexCrawler(CrawlerBase):
         resp.raise_for_status()
         return resp.json()
 
+    def predict_id(self, target_text):
+        try:
+            kind, tid = self.parse_target(target_text).split(':', 1)
+            return f'{self.id_prefix}{tid}' if kind == 'title' else None
+        except Exception:
+            return None
+
     def fetch_meta(self, target, batch):
         kind, tid = target.split(':', 1)
 

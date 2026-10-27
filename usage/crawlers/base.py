@@ -159,6 +159,13 @@ class CrawlerBase:
         text = (text or '').strip()
         return any(re.search(p, text, re.IGNORECASE) for p in cls.url_patterns)
 
+    def predict_id(self, target_text):
+        """仅解析输入预判书架 ID（不发网络请求）；无法预判返回 None（跳过任务去重）"""
+        try:
+            return None
+        except Exception:
+            return None
+
     # ---- 元数据辅助 ----
     def make_meta(self, sid, title, authors, tags, description, chapters,
                   total=None, source_url=''):

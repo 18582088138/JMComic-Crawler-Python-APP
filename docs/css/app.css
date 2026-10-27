@@ -358,9 +358,14 @@ a{color:var(--ac2);text-decoration:none}
 .qrow{display:flex;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
 .qrow:last-child{border-bottom:none}
 .qrow .qd{flex:none}
-.qrow .qt{flex:1;min-width:0;font-size:.76rem;color:var(--txt2);white-space:normal;word-break:break-all;line-height:1.4}
-.qrow.doing .qt{color:var(--txt)}
-.qrow.failed .qt{color:var(--err)}
+.qlist{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.qbody{min-width:0}
+.qtitle2{font-size:.78rem;color:var(--txt);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qlink{font-size:.66rem;color:var(--txt3);font-family:ui-monospace,monospace;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qlink:active{color:var(--ac2)}
+.qrow.doing .qtitle2{color:var(--txt)}
+.qrow.failed .qtitle2{color:var(--err)}
 .qact{flex:none;border:1px solid var(--line);background:var(--card2);color:var(--txt2);
   font-size:.66rem;font-weight:700;padding:5px 10px;border-radius:9px;cursor:pointer;font-family:inherit}
 .qact:active{transform:scale(.94)}

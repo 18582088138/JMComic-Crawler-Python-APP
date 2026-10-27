@@ -10,6 +10,10 @@ on:
       - 'docs/**'
       - '!docs/comics/**'
       - '!docs/data/**'
+  # 定时巡检：把已完成爬取但尚未装配的 data 分支增量装配到 gh-pages
+  # （爬取与装配解耦：装配失败/卡住不影响爬取队列）
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       REASSEMBLE:
@@ -38,14 +42,16 @@ jobs:
           python-version: "3.11"
 
       - name: 同步前端到 gh-pages
-        if: github.event.inputs.REASSEMBLE != 'true'
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python usage/deploy_frontend.py
 
-      - name: 全量重装配 gh-pages
-        if: github.event.inputs.REASSEMBLE == 'true'
+      - name: 巡检装配 gh-pages（增量：仅同步有变更的 data 分支）
+        if: github.event_name != 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

@@ -1,6 +1,8 @@
-/* 「书架」分页：站点筛选 + 喜欢置顶 + 分页 + 阅读/下载 + 离线角标 + 满库清理 */
+/* 「书架」分页：站点筛选 + 喜欢置顶 + 分页 + 阅读/下载 + 离线角标 + 满库清理 + 手动装配 */
 import { $, $$, toast, esc, relTime, store, siteOf, siteMeta } from './util.js';
 import { detectRepo, dispatchWorkflow, repoInfo, newIssueUrl } from './github.js';
+
+/* dispatchWorkflow 在 github.js 中已支持 workflow 参数（装配用 pages_deploy.yml） */
 
 const PAGE_SIZE = 12;
 let shelfData = [];
@@ -382,6 +384,28 @@ function purgeSWCache(ids) {
 
 export function initShelfView() {
   $('#manageShelf').addEventListener('click', () => setSelecting(!selecting));
+  // 手动装配：扫描 data 分支，把未装配的更新增量发布到 gh-pages
+  $('#assembleBtn').addEventListener('click', async function () {
+    const repo = detectRepo();
+    const token = store.get('token', '');
+    if (!repo) { location.hash = '#/settings'; toast('请先在设置中填写仓库地址'); return; }
+    if (!token) { toast('手动装配需要 Token（设置页一键创建）', 3500); location.hash = '#/settings'; return; }
+    this.disabled = true;
+    this.textContent = '装配中…';
+    try {
+      const status = await dispatchWorkflow(repo, { REASSEMBLE: 'true' }, 'pages_deploy.yml');
+      if (status === 204) {
+        toast('装配任务已提交，完成后页面自动部署（约 1~2 分钟）', 3500);
+        setTimeout(() => loadShelf(), 120000);
+      } else {
+        toast('装配触发失败：HTTP ' + status);
+      }
+    } catch (e) {
+      toast('网络错误');
+    }
+    this.disabled = false;
+    this.textContent = '⚙ 装配';
+  });
   $('#prevPage').addEventListener('click', () => { if (page > 1) { page--; renderShelf(); } });
   $('#nextPage').addEventListener('click', () => { page++; renderShelf(); });
   $('#refreshShelf').addEventListener('click', () => { loadShelf(); toast('已刷新'); });

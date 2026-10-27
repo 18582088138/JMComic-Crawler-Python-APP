@@ -50,6 +50,12 @@ class JmcomicCrawler(CrawlerBase):
     def get_chapter_image_urls(self, chapter_ref):
         raise NotImplementedError('JMComic 走整本下载，见 crawl()')
 
+    def predict_id(self, target_text):
+        try:
+            return self.parse_target(target_text)
+        except Exception:
+            return None
+
     def crawl(self, target_text, work_dir, batch=1):
         aid = self.parse_target(target_text)
         impl = os.getenv('CLIENT_IMPL', '').strip()

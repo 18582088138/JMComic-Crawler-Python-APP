@@ -77,21 +77,29 @@ function refreshChip() {
   checkDuplicate(targets[0]);
 }
 
-/* 防重复提示：书架已有该作品时提示（重爬=抓新章节/更新，属正常操作，仅提醒） */
+/* 防重复：书架已有该作品时给出提示与「强制重爬」确认通路（服务端同样会做去重检测） */
+let dupHit = null;
 async function checkDuplicate(target) {
+  dupHit = null;
+  const btn = $('#submitBtn');
+  btn.dataset.force = '';
+  btn.innerHTML = '⚡ 开始爬取';
   try {
     if (Date.now() - shelfCache.ts > 60000) {
       const r = await fetch('data/comics.json?t=' + Date.now(), { cache: 'no-store' });
       shelfCache = { ts: Date.now(), comics: r.ok ? (await r.json()).comics || [] : [] };
     }
-    const hit = shelfCache.comics.find(c =>
+    dupHit = shelfCache.comics.find(c =>
       (c.sourceUrl && c.sourceUrl.replace(/\/$/, '') === target.replace(/\/$/, ''))
-      || (c.id === target));
-    if (hit) {
+      || (c.id === target)) || null;
+    if (dupHit) {
       const chip = $('#idChip');
       chip.className = 'idchip show err';
       chip.style.borderColor = 'rgba(251,191,36,.4)';
-      chip.innerHTML = `⚠️ 书架已有《${esc((hit.title || '').slice(0, 24))}》（${hit.chapterCount}/${hit.totalChapters || hit.chapterCount} 章）——若为抓新章节请直接提交，将合并进同一本`;
+      const full = (dupHit.totalChapters || 0) && (dupHit.chapterCount || 0) >= dupHit.totalChapters;
+      chip.innerHTML = `⚠️ 书架已有《${esc((dupHit.title || '').slice(0, 24))}》（${dupHit.chapterCount}/${dupHit.totalChapters || dupHit.chapterCount} 章）` +
+        (full ? '——已爬完，重爬请点击下方「强制重爬」' : '——未爬完，提交将自动续抓后续章节');
+      if (full) btn.innerHTML = '🔁 已有该作品，点此强制重爬';
     }
   } catch (e) { /* 提示失败不影响提交 */ }
 }
@@ -126,9 +134,15 @@ function submitCurrent(btn) {
   let source = currentSource();
   if (source === 'auto' && targets.length === 1) source = detectSite(targets[0]) || 'auto';
   const batch = Math.max(1, Math.min(99, parseInt($('#batchInput').value, 10) || 1));
+  const force = btn.dataset.force === '1';
+  btn.dataset.force = '';
 
   task.enqueue(targets, source, batch, mode);
+  const q = task.getState().queue;
+  q[q.length - 1].force = force;
+  store.set('crawl_queue', q);
   $('#targetInput').value = '';
+  dupHit = null;
   refreshChip();
   renderQueueCard();
   toast(targets.length > 1 ? `已加入队列：${targets.length} 个任务` : '已加入队列');
@@ -151,6 +165,7 @@ function doDispatch(claimed) {
   const targets = claimed.targets;
   const targetText = targets.join('\n');
   const single = targets.length === 1;
+  const force = claimed.force ? '1' : '';
 
   showTaskCard(targets);
   setStepSub('dispatch', `派发中…（共 ${targets.length} 个任务）`);
@@ -159,7 +174,7 @@ function doDispatch(claimed) {
   if (token) {
     dispatchWorkflow(repo, {
       TARGET: targetText, SOURCE: claimed.source === 'generic' ? 'auto' : claimed.source,
-      BATCH: String(claimed.batch || 1), MODE: modeLabel,
+      BATCH: String(claimed.batch || 1), MODE: modeLabel, FORCE: force,
       KEEP_LATEST: String(keep), CLIENT_IMPL: '',  // ⚠️ inputs 全部必须是字符串
     }).then(status => {
       if (status === 204) {
@@ -190,6 +205,7 @@ function doDispatch(claimed) {
       const lines = ['mode: ' + (claimed.mode || 'both')];
       if (claimed.source !== 'auto' && claimed.source !== 'generic') lines.push('source: ' + claimed.source);
       if ((claimed.batch || 1) > 1) lines.push('batch: ' + claimed.batch);
+      if (force) lines.push('force: 1');
       targets.forEach(t => lines.push('task: ' + t));
       lines.push('', '由云书架网页引导创建，爬取完成后本 issue 会自动收到链接并被关闭。');
       const title = single ? '[jm] ' + targets[0] : `[jm] 多任务 x${targets.length}`;
@@ -242,7 +258,26 @@ function showTaskCard(targets) {
 }
 
 function shortTarget(t) {
-  return t.length > 34 ? t.slice(0, 34) + '…' : t;
+  return t.length > 46 ? t.slice(0, 46) + '…' : t;
+}
+
+/* 上排标题、下排链接（点链接复制） */
+function resolveTitle(target) {
+  const norm = target.replace(/\/$/, '');
+  const hit = shelfCache.comics.find(c =>
+    (c.sourceUrl && c.sourceUrl.replace(/\/$/, '') === norm) || c.id === target);
+  if (hit) return hit.title;
+  try { return new URL(target).hostname; } catch (e) { return target; }
+}
+
+function qrow(icon, cls, entries, actLabel, actAttr) {
+  const rows = entries.map(e => `
+    <div class="qbody">
+      <div class="qtitle2">${esc((e.note || resolveTitle(e.target) || '').slice(0, 40))}</div>
+      <div class="qlink" data-copy="${esc(e.target)}" title="点击复制">${esc(shortTarget(e.target))}</div>
+    </div>`).join('');
+  return `<div class="qrow ${cls}"><span class="qd">${icon}</span><div class="qlist">${rows}</div>
+    ${actLabel ? `<button class="qact" ${actAttr || ''}>${actLabel}</button>` : ''}</div>`;
 }
 
 function renderQueueCard() {
@@ -250,16 +285,20 @@ function renderQueueCard() {
   const box = $('#queueCard');
   const items = [];
   if (state.active) {
-    items.push(`<div class="qrow doing"><span class="qd">⚡</span><span class="qt">进行中：${esc(state.active.targets.map(shortTarget).join('，'))}</span>
-      <button class="qact" id="cancelActiveBtn">取消</button></div>`);
+    items.push(qrow('⚡', 'doing',
+      state.active.targets.map(t => ({ target: t })), '取消', 'id="cancelActiveBtn"'));
   }
   state.queue.forEach((q, i) => {
-    items.push(`<div class="qrow"><span class="qd">🕐</span><span class="qt">${esc(q.targets.map(shortTarget).join('，'))}</span>
-      <button class="qact" data-qidx="${i}">移除</button></div>`);
+    items.push(qrow('🕐', '', q.targets.map(t => ({ target: t })), '移除', `data-qidx="${i}"`));
   });
   if (state.lastFailed) {
-    items.push(`<div class="qrow failed"><span class="qd">❌</span><span class="qt">${esc(state.lastFailed.targets.map(shortTarget).join('，'))}（${esc(state.lastFailed.reason || '失败')}）</span>
-      <button class="qact" id="retryBtn">重试</button></div>`);
+    // 失败目标逐个列出（上排原因、下排链接），可单独重试
+    const lf = state.lastFailed;
+    const fails = lf.failedTargets || lf.targets;
+    fails.forEach(t => {
+      const reason = ((lf.reasons && lf.reasons[t]) || lf.reason || '失败').slice(0, 40);
+      items.push(qrow('❌', 'failed', [{ target: t, note: reason }], '重试', `data-retry="${esc(t)}"`));
+    });
   }
   if (!items.length) {
     box.style.display = 'none';
@@ -268,6 +307,14 @@ function renderQueueCard() {
   }
   box.style.display = 'block';
   box.innerHTML = '<b class="qtitle">任务队列</b>' + items.join('');
+  box.querySelectorAll('.qlink').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = el.dataset.copy;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(t).then(() => toast('已复制链接'), () => toast('复制失败'));
+      } else toast(t, 3000);
+    });
+  });
   box.querySelectorAll('[data-qidx]').forEach(b => {
     b.addEventListener('click', () => {
       task.cancelQueued(parseInt(b.dataset.qidx, 10));
@@ -275,17 +322,18 @@ function renderQueueCard() {
       toast('已从队列移除');
     });
   });
+  box.querySelectorAll('[data-retry]').forEach(b => {
+    b.addEventListener('click', () => {
+      task.retryFailed(b.dataset.retry);
+      renderQueueCard();
+      pumpQueue();
+    });
+  });
   const cb = $('#cancelActiveBtn');
   if (cb) cb.addEventListener('click', async () => {
     cb.disabled = true;
     await task.cancelActive();
     $('#taskCard').style.display = 'none';
-    renderQueueCard();
-    pumpQueue();
-  });
-  const rb = $('#retryBtn');
-  if (rb) rb.addEventListener('click', () => {
-    task.retryFailed();
     renderQueueCard();
     pumpQueue();
   });

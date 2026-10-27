@@ -35,6 +35,12 @@ class NhentaiCrawler(CrawlerBase):
             return text
         raise ValueError(f'无法识别 nhentai 目标: {text}')
 
+    def predict_id(self, target_text):
+        try:
+            return f'{self.id_prefix}{self.parse_target(target_text)}'
+        except Exception:
+            return None
+
     def fetch_meta(self, gid, batch):
         media_id, title, artists, types = self._fetch_gallery(gid)
         return self.make_meta(gid, title, artists, [], f'nhentai g/{gid}',

@@ -117,6 +117,14 @@ class SimpleCmsCrawler(CrawlerBase):
         return self.make_meta(self._sid_from_url(url), title, authors, [], f'{self.name} {url}',
                               chapters, total=total, source_url=url)
 
+    def predict_id(self, target_text):
+        try:
+            url = self.parse_target(target_text)
+            m = re.search(re.escape(self.host) + r'/(\d+)', url)
+            return f'{self.id_prefix}{m.group(1)}' if m else None
+        except Exception:
+            return None
+
     def get_chapter_image_urls(self, chapter_ref):
         resp = self.session.get(chapter_ref['url'], timeout=30)
         if resp.status_code != 200:

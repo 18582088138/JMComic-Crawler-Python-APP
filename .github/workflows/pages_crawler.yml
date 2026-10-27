@@ -21,6 +21,11 @@ on:
         default: ''
         required: false
 
+      FORCE:
+        description: '强制重爬（勾选后跳过「已爬取检测」，连载作品重爬不需要勾）'
+        type: boolean
+        default: false
+
       SOURCE:
         description: '平台（auto = 按链接自动识别）'
         type: choice
@@ -76,9 +81,11 @@ jobs:
     # issue 触发时，仅处理标题以 [jm] 开头的 issue
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[jm]')
     runs-on: ubuntu-latest
+    timeout-minutes: 65  # 硬超时兜底（脚本内还有 50 分钟软预算）
     env:
       JM_PAGES_INPUT: ${{ github.event.inputs.TARGET || github.event.issue.title }}
       JM_PAGES_DELETE_IDS: ${{ github.event.inputs.DELETE_IDS }}
+      JM_PAGES_FORCE: ${{ github.event.inputs.FORCE == 'true' && '1' || '' }}
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
       JM_PAGES_SOURCE: ${{ github.event.inputs.SOURCE || 'auto' }}
       JM_PAGES_BATCH: ${{ github.event.inputs.BATCH || 1 }}
@@ -125,7 +132,8 @@ jobs:
       # GITHUB_TOKEN 推送 gh-pages 不会自动触发 Pages 构建（GitHub 限制），需显式请求；
       # 失败时也要跑：last_run.json / wishlist.json 是 Contents API 直写 gh-pages 的，同样需要部署
       - name: 触发 Pages 部署
-        if: always()
+        # 仅在确有装配或状态文件更新时才触发（减少 Pages 构建互相取消的噪音）
+        if: always() && (steps.build.outputs.assembled == '1' || failure())
         run: |
           curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \

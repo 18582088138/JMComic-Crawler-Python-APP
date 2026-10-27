@@ -36,6 +36,15 @@ class EhentaiCrawler(CrawlerBase):
             return f'home:{m.group(1)}'  # 非画廊链接：自动发现第一本
         raise ValueError(f'无法识别 E-Hentai 目标: {text}（需要完整画廊链接，含 token 段）')
 
+    def predict_id(self, target_text):
+        try:
+            gt = self.parse_target(target_text)
+            if gt.startswith('home:'):
+                return None
+            return f'{self.id_prefix}{gt.split("/", 1)[0]}'
+        except Exception:
+            return None
+
     def fetch_meta(self, target, batch):
         if target.startswith('home:'):
             resp = self.session.get(target[5:], timeout=30)

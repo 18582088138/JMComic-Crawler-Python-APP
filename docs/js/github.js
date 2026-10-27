@@ -20,8 +20,8 @@ function headers(withAuth) {
   return h;
 }
 
-export async function dispatchWorkflow(repo, inputs) {
-  const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/pages_crawler.yml/dispatches`, {
+export async function dispatchWorkflow(repo, inputs, workflow = 'pages_crawler.yml') {
+  const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
     method: 'POST',
     headers: { ...headers(true), 'Content-Type': 'application/json' },
     body: JSON.stringify({ ref: 'master', inputs }),

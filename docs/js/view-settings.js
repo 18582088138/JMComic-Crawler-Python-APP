@@ -28,11 +28,14 @@ export function initSettingsView() {
   $('#repoInput').value = detectRepo();
   $('#tokenInput').value = store.get('token', '');
   $('#keepInput').value = store.get('keep', 30);
+  $('#taskTimeoutInput').value = store.get('task_timeout', 15);
   $('#saveSettingsBtn').addEventListener('click', () => {
     store.set('repo', $('#repoInput').value.trim());
     store.set('token', $('#tokenInput').value.trim());
     const keep = Math.max(1, Math.min(99, parseInt($('#keepInput').value, 10) || 30));
     store.set('keep', keep);
+    const tmo = Math.max(5, Math.min(120, parseInt($('#taskTimeoutInput').value, 10) || 15));
+    store.set('task_timeout', tmo);
     toast('设置已保存（仅存储在本机浏览器）');
   });
   $('#makeTokenBtn').addEventListener('click', () => {

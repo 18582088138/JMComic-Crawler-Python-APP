@@ -235,8 +235,15 @@ def push_data_branch(site_dir, site, message, push=True):
     return commit_and_push(site_dir, f'data/{site}', message, push=push)
 
 
+def worktree_head_sha(worktree):
+    return git('rev-parse', 'HEAD', cwd=worktree)
+
+
 def assemble_gh_pages(repo, docs_dir, syncs, push=True):
-    """一次性装配 gh-pages。syncs: [(site_dir, site, changed_id_or_None)]"""
+    """一次性装配 gh-pages。syncs: [(site_dir, site, changed_id_or_None)]
+
+    装配后为每个站点写入 data/.assembled-<site> 标记（内容=data 分支 HEAD sha），
+    定时巡检（reassemble_pages）凭它免拉取判断哪站有更新。"""
     pages_dir = os.path.join(repo, 'build', 'gh_pages_worktree')
     existed = open_branch_worktree(repo, PAGES_BRANCH, pages_dir)
     try:
@@ -244,6 +251,10 @@ def assemble_gh_pages(repo, docs_dir, syncs, push=True):
         for site_dir, site, changed_id in syncs:
             sync_site_comics(site_dir, pages_dir, site,
                              only_ids=None if not existed else ({changed_id} if changed_id else set()))
+            sha = worktree_head_sha(site_dir)
+            marker = os.path.join(pages_dir, 'data', f'.assembled-{site}')
+            with open(marker, 'w') as f:
+                f.write(sha)
         if not existed:
             log('gh-pages 分支不存在，已初始化为完整站点')
         return commit_and_push(pages_dir, PAGES_BRANCH,

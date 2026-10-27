@@ -64,6 +64,13 @@ class WnacgCrawler(CrawlerBase):
             log('wnacg: page-1 形式 404，回退裸 -aid- 形式')
             return self._get(f'/photos-index-aid-{aid}.html')
 
+    def predict_id(self, target_text):
+        try:
+            aid = self.parse_target(target_text)
+            return None if aid.startswith('home:') else f'{self.id_prefix}{aid}'
+        except Exception:
+            return None
+
     def fetch_meta(self, aid, batch):
         if aid.startswith('home:'):
             resp = self.session.get(aid[5:], timeout=30)

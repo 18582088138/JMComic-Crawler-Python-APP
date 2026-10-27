@@ -89,13 +89,22 @@ export async function cancelActive() {
   return true;
 }
 
-/* ================= 重试 ================= */
+/* ================= 重试（支持只重试失败目标中的单个） ================= */
 
-export function retryFailed() {
+export function retryFailed(onlyTarget) {
   if (!lastFailed) return null;
-  enqueue(lastFailed.targets, 'auto', lastFailed.batch || 1, lastFailed.mode || 'both');
-  lastFailed = null;
-  store.set('last_failed', null);
+  let targets = lastFailed.targets;
+  if (onlyTarget) {
+    targets = [onlyTarget];
+    // 其余失败目标留在 lastFailed 供继续单独重试
+    const rest = (lastFailed.failedTargets || lastFailed.targets).filter(t => t !== onlyTarget);
+    lastFailed = rest.length ? { ...lastFailed, targets: rest } : null;
+    store.set('last_failed', lastFailed);
+  } else {
+    lastFailed = null;
+    store.set('last_failed', null);
+  }
+  enqueue(targets, 'auto', 1, 'both');
   if (onChangeCallback) onChangeCallback();
   return true;
 }
@@ -138,10 +147,17 @@ function stopElapsed() {
   if (el) el.textContent = '';
 }
 
+function timeoutMs() {
+  // 可配置（设置页），默认每任务 15 分钟
+  const min = Math.max(5, Math.min(120, parseInt(store.get('task_timeout', 15), 10) || 15));
+  const n = active ? Math.max(1, active.targets.length) : 1;
+  return min * 60 * 1000 * n;
+}
+
 function pollOnce(force) {
   if (!active) return;
-  if (Date.now() - active.ts > 30 * 60 * 1000) {
-    finishActive('failed', '等待超时（30 分钟）');
+  if (Date.now() - active.ts > timeoutMs()) {
+    finishActive('failed', `等待超时（${Math.round(timeoutMs() / 60000)} 分钟）——云端可能仍在执行，可到 Actions 查看`);
     return;
   }
   pollShelf();
@@ -197,11 +213,30 @@ function finishActive(status, reason) {
   active = null;
   store.set('crawl_active', null);
   if (status === 'success') {
-    lastFailed = null;
-    store.set('last_failed', null);
+    // 云端可能部分失败：拉 last_run 明细，失败目标单独入重试位
+    fetch('data/last_run.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(lr => {
+        if (lr && lr.failed && lr.failed.length &&
+            Math.abs(new Date(lr.ts).getTime() - finished.ts) < 3600000) {
+          lastFailed = {
+            targets: lr.failed.map(f => f.target), failedTargets: lr.failed.map(f => f.target),
+            reasons: Object.fromEntries(lr.failed.map(f => [f.target, f.error])),
+            ts: Date.now(), reason: '部分目标失败（可单独重试）',
+          };
+          store.set('last_failed', lastFailed);
+        } else {
+          lastFailed = null;
+          store.set('last_failed', null);
+        }
+        if (onChangeCallback) onChangeCallback('render');
+      }).catch(() => {});
     toast('🎉 任务完成，已上架书架！');
   } else {
-    lastFailed = { targets: finished.targets, ts: Date.now(), reason: reason || '执行失败', batch: finished.batch, mode: finished.mode };
+    lastFailed = {
+      targets: finished.targets, failedTargets: finished.targets.slice(),
+      ts: Date.now(), reason: reason || '执行失败', batch: finished.batch, mode: finished.mode,
+    };
     store.set('last_failed', lastFailed);
     toast('❌ ' + (reason || '执行失败'), 4000);
   }

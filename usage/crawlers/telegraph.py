@@ -31,6 +31,18 @@ class TelegraphCrawler(CrawlerBase):
             return 'https://' + m.group(1)
         raise ValueError(f'无法识别 Telegra 目标: {text}（需要 telegra.ph 文章链接）')
 
+    def predict_id(self, target_text):
+        try:
+            import hashlib
+            url = self.parse_target(target_text)
+            h = hashlib.md5(url.encode()).hexdigest()[:8]
+            slug = url.rstrip('/').rsplit('/', 1)[-1]
+            dm = re.search(r'-(\d{2})-(\d{2})$', slug)
+            sid = f'{dm.group(1)}{dm.group(2)}-{h}' if dm else h
+            return f'{self.id_prefix}{sid}'
+        except Exception:
+            return None
+
     def fetch_meta(self, url, batch):
         resp = self.session.get(url, timeout=30)
         if resp.status_code != 200:
