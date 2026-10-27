@@ -213,4 +213,4 @@ Actions Workflow permissions = write；Issues = 开启。
   - **首页自动发现**：manhuagui/wnacg/ehentai/bika 实现过「贴首页链接抓第一本」
     （bika/manhuagui 下架后该能力随站停用，wnacg/ehentai 在线可用）
 - mkzhan 目录 API 待破解（`chapter/show` 报"用户标识不能为空"，可能需要 App token）
-- 100MB 超限打包：待用户确认分卷压缩方案后实施（V1.0 临时护栏已上线）
+- ~~100MB 超限打包~~：用户已拍板保持护栏方案（超大本子只在线阅读不打包）；分卷/Release 备选方案记录在此备忘

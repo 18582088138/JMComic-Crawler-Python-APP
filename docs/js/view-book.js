@@ -54,6 +54,8 @@ function render() {
   acts.push(`<a class="bact primary" href="${readUrl(resume)}">▶ ${prog ? `续读 第${resume}章` : '开始阅读'}</a>`);
   if (m.hasZip && m.zip) {
     acts.push(`<a class="bact" href="comics/${encodeURIComponent(m.id)}/${encodeURIComponent(m.zip)}" download>📦 下载 ZIP（含全部已上架章节）</a>`);
+  } else if (m.zipNote) {
+    acts.push(`<div class="bact ghost" style="cursor:default">📦 ${esc(m.zipNote)}（可在线阅读）</div>`);
   }
   if (hasMore) {
     acts.push(`<button class="bact" id="fetchMoreBtn">⬆ 抓取更多章节（还有 ${total - uploaded} 章未上架）</button>`);
