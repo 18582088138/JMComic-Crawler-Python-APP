@@ -36,7 +36,16 @@
 - 单 commit force-push ⇒ 历史永不积累图片 blob；旧 blob 失去引用后被 GC。
 - 相同内容的 blob 在 git 对象库只存一份，data 分支与 gh-pages 不重复占空间。
 - 已注册站点：`jmcomic`（JM 纯数字车号）、`mangadex`、`nhentai`、`manhuagui`、`dmzj`、`wnacg`、`ehentai`、`bika`；兜底 `generic` 不落分支。
-- 书架 ID 带站点前缀（`md-`/`nh-`/`mg-`/`dz-`/`wn-`/`eh-`/`bk-`），JM 沿用纯数字，互不冲突。
+- 书架 ID 带站点前缀（`md-`/`nh-`/`tg-`/`mkz-`/`wn-`/`eh-`），JM 沿用纯数字，互不冲突。
+- **爬取/装配解耦（V1.0）**：爬取 run 只推 data 分支，装配为 best-effort（失败仅记日志）；
+  pages_deploy 每 15 分钟定时巡检（按 `data/.assembled-<site>` 标记比对 data 分支 HEAD sha，
+  无变更零 git 操作），书架页「⚙ 装配」可手动触发。装配失败不再连累爬取队列。
+- **任务去重（V1.0）**：爬虫 `predict_id()` 轻量预判书架 ID（不发请求），提交后先查对应
+  data 分支索引，已爬完（单章站/章节齐）直接跳过；`FORCE=1`（dispatch 勾选或 issue 正文
+  `force: 1`）强制重爬；连载未爬完的重爬属于合并新章节，不拦截。
+- **100MB 护栏（V1.0 临时）**：GitHub 单文件 100MB 硬限制曾致超大 zip 推枝失败、
+  整个 run 崩溃；现 zip 超 95MB 放弃打包（manifest 记 zipNote，在线阅读不受影响）。
+  分卷/换存储方案评估中（见 §6）。
 - **装配是增量的**：每次爬取只向 gh-pages 复制本次构建的那本（下架目录照常删除），
   不整站复制；全量校准用 `usage/reassemble_pages.py`
   （pages_deploy.yml 的 `REASSEMBLE=true` 触发，用于修复装配中途失败等异常）。
@@ -204,3 +213,4 @@ Actions Workflow permissions = write；Issues = 开启。
   - **首页自动发现**：manhuagui/wnacg/ehentai/bika 实现过「贴首页链接抓第一本」
     （bika/manhuagui 下架后该能力随站停用，wnacg/ehentai 在线可用）
 - mkzhan 目录 API 待破解（`chapter/show` 报"用户标识不能为空"，可能需要 App token）
+- 100MB 超限打包：待用户确认分卷压缩方案后实施（V1.0 临时护栏已上线）
