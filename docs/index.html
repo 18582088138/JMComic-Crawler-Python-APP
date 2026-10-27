@@ -152,6 +152,13 @@
         </div>
         <input type="password" id="tokenInput" placeholder="粘贴 ghp_... / github_pat_...">
 
+        <b class="sec-title">多设备同步（Token/仓库/配置一键搬家）</b>
+        <div class="row2">
+          <button class="bigbtn ghost" id="exportCfgBtn" style="margin-top:4px">📤 导出配置（复制到剪贴板）</button>
+          <button class="bigbtn ghost" id="importCfgBtn" style="margin-top:4px">📥 导入配置（从剪贴板）</button>
+        </div>
+        <div class="hint">在已配好 Token 的设备上「导出」，到新设备「导入」即可；之后爬取/删除/清理/装配全部后台静默完成，不再跳 GitHub。</div>
+
         <b class="sec-title">任务超时（每个任务，分钟）</b>
         <div class="limitrow" style="margin-top:0">
           单任务最长等待
