@@ -258,6 +258,7 @@ def main():
     if raw_input.strip() == '__cleanup__':
         log(f'保留清理任务: 每站精确清理至 {keep} 本')
         cleanup_all_sites(keep)
+        write_maintenance_output()
         return
 
     # ---------- 指定删除维护任务 ----------
@@ -269,6 +270,7 @@ def main():
         ids = parse_delete_ids(delete_ids)
         log(f'删除任务: {len(ids)} 本 {ids}')
         delete_books(ids)
+        write_maintenance_output()
         return
 
     # ---------- mock：本地构建调试，不碰分支 ----------
@@ -417,6 +419,15 @@ def check_already_crawled(source, target, worktrees):
     if is_single or (total and done >= total):
         return existing
     return None  # 连载未爬完 → 允许继续（合并新章节）
+
+
+def write_maintenance_output():
+    """清理/删除类维护任务也走了 publish 装配，写 assembled=1 让工作流触发 Pages 部署
+    （否则线上站点停留在旧部署，用户看不到删除/清理结果——2026-10-27 实测踩坑）"""
+    output_file = env('GITHUB_OUTPUT')
+    if output_file:
+        with open(output_file, 'a', encoding='utf-8') as f:
+            f.write('assembled=1\n')
 
 
 def split_targets(raw_input, issue_body=''):
