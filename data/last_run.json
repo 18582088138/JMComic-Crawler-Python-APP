@@ -1,14 +1,14 @@
 {
-  "ts": "2026-10-29T17:30:11Z",
+  "ts": "2026-10-29T17:40:48Z",
   "status": "success",
-  "target": "https://telegra.ph/%E3%81%82%E3%81%8A%E3%82%80%E3%81%97-%E3%82%A8%E3%83%AD%E3%83%88%E3%83%A9%E3%83%83%E3%83%97%E3%83%80%E3%83%B3%E3%82%B8%E3%83%A7%E3%83%B3%E5%86%92%E9%99%BA%E8%80%85%E6%B7%AB%E9%AD%94",
+  "target": "https://telegra.ph/%E3%81%9B%E3%81%B6%E3%82%93%E3%81%8C%E3%83%BC-%E6%A5%B5%E6%A5%B5%E6%A5%B5%E7%8C%A5%E6%80%A7%E6%95%99%E5%85%B8-%E4%B8%AD%E5%9B%BD%E7%BF%BB%E8%A8%B3-08-21",
   "source": "telegraph",
-  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/40921516330",
-  "shelf_id": "tg-1017-6500141b",
-  "title": "[あおむし] エロトラップダンジョン―冒険者淫魔対壁尻ミミック― (コミックアンリアル Vol.123) [中国翻訳]",
+  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/40921990395",
+  "shelf_id": "tg-0821-ea6a4ef3",
+  "title": "[せぶんがー] 極極極猥性教典 [中国翻訳]",
   "assembled": true,
   "done": [
-    "tg-1017-6500141b"
+    "tg-0821-ea6a4ef3"
   ],
   "skipped": [],
   "failed": []
