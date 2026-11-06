@@ -1,0 +1,38 @@
+{
+  "site": "mkzhan",
+  "updatedAt": "2026-10-22T22:48:21Z",
+  "comics": [
+    {
+      "id": "mkz-207622",
+      "site": "mkzhan",
+      "title": "妖神记",
+      "author": "{{ item.author_title }}",
+      "pageCount": 14,
+      "chapterCount": 1,
+      "totalChapters": 1,
+      "sourceUrl": "https://www.mkzhan.com/207622/",
+      "cover": "comics/mkz-207622/cover.jpg",
+      "hasReader": true,
+      "hasZip": false,
+      "zipName": null,
+      "updatedAt": "2026-10-22T22:48:21Z",
+      "sizeBytes": 4314157
+    },
+    {
+      "id": "mkz-43",
+      "site": "mkzhan",
+      "title": "偷星九月天",
+      "author": "{{ item.author_title }}",
+      "pageCount": 24,
+      "chapterCount": 1,
+      "totalChapters": 1,
+      "sourceUrl": "https://www.mkzhan.com/43/",
+      "cover": "comics/mkz-43/cover.jpg",
+      "hasReader": true,
+      "hasZip": false,
+      "zipName": null,
+      "updatedAt": "2026-10-22T16:24:15Z",
+      "sizeBytes": 5836039
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "mkz-43",
+  "site": "mkzhan",
+  "title": "偷星九月天",
+  "author": "{{ item.author_title }}",
+  "authors": [
+    "{{ item.author_title }}"
+  ],
+  "tags": [],
+  "description": "漫客栈 https://www.mkzhan.com/43/",
+  "sourceUrl": "https://www.mkzhan.com/43/",
+  "totalChapters": 1,
+  "updatedAt": "2026-10-22T16:24:15Z",
+  "hasReader": true,
+  "hasZip": false,
+  "zip": null,
+  "pageCount": 24,
+  "chapterCount": 1,
+  "chapters": [
+    {
+      "photoId": "380",
+      "title": "开始阅读",
+      "order": 1.0,
+      "pageCount": 24,
+      "pages": [
+        "images/380/001.jpg",
+        "images/380/002.jpg",
+        "images/380/003.jpg",
+        "images/380/004.jpg",
+        "images/380/005.jpg",
+        "images/380/006.jpg",
+        "images/380/007.jpg",
+        "images/380/008.jpg",
+        "images/380/009.jpg",
+        "images/380/010.jpg",
+        "images/380/011.jpg",
+        "images/380/012.jpg",
+        "images/380/013.jpg",
+        "images/380/014.jpg",
+        "images/380/015.jpg",
+        "images/380/016.jpg",
+        "images/380/017.jpg",
+        "images/380/018.jpg",
+        "images/380/019.jpg",
+        "images/380/020.jpg",
+        "images/380/021.jpg",
+        "images/380/022.jpg",
+        "images/380/023.jpg",
+        "images/380/024.jpg"
+      ],
+      "index": 1
+    }
+  ]
+}
