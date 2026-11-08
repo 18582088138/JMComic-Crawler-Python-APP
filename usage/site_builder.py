@@ -95,6 +95,34 @@ def chapter_key(ch):
 
 
 # ============================================================
+# 目录命名（V2.1：新书目录带部分标题，旧书目录不变）
+# ============================================================
+
+def dir_slug(title, max_len=20):
+    """标题清洗为目录名片段：去路径非法字符/空白/点，保留 CJK，截断 max_len"""
+    t = re.sub(r'[\\/:*?"<>|\s]+', '', title or '')
+    t = re.sub(r'\.+', '', t)   # 防 . / .. / 隐藏目录
+    return t[:max_len]
+
+
+def resolve_comic_dir(site_dir, aid, title=''):
+    """决定本子在 comics/ 下的目录名。
+
+    - 已上架的书：沿用索引里的 dir（V2.1 起的 id_标题），或旧版纯 id 目录——
+      **目录名对同一本书终身不变**，避免改名导致阅读进度/装配错位
+    - 新书：`id_部分标题`（GitHub 分支目录可辨认）
+    """
+    idx = read_index(site_dir)
+    for c in idx.get('comics', []):
+        if str(c.get('id')) == str(aid):
+            return str(c.get('dir') or aid)
+    if os.path.isdir(os.path.join(site_dir, 'comics', str(aid))):
+        return str(aid)
+    slug = dir_slug(title)
+    return f'{aid}_{slug}' if slug else str(aid)
+
+
+# ============================================================
 # zip 命名与布局（与 v2 产物保持一致，旧包无需重写）
 # ============================================================
 
@@ -323,7 +351,8 @@ def build_site(meta, raw_dir, site_dir, mode='both'):
     if mode not in ('both', ''):
         log(f'产物模式 {mode} 已退役（V2.0 zip-only），按 zip + 元数据构建')
 
-    comic_dir = os.path.join(site_dir, 'comics', aid)
+    dir_name = resolve_comic_dir(site_dir, aid, meta.get('title', ''))
+    comic_dir = os.path.join(site_dir, 'comics', dir_name)
     os.makedirs(comic_dir, exist_ok=True)
     old = read_manifest(comic_dir)
 
@@ -432,6 +461,7 @@ def build_site(meta, raw_dir, site_dir, mode='both'):
         manifest = {
             'id': aid,
             'site': site,
+            'dir': dir_name,
             'title': meta['title'] or (old or {}).get('title'),
             'author': (meta['authors'][0] if meta['authors'] else None) or (old or {}).get('author') or '未知',
             'authors': meta['authors'] or (old or {}).get('authors') or [],
@@ -456,13 +486,14 @@ def build_site(meta, raw_dir, site_dir, mode='both'):
         entry = {
             'id': aid,
             'site': site,
+            'dir': dir_name,
             'title': manifest['title'],
             'author': manifest['author'],
             'pageCount': page_count,
             'chapterCount': len(out_chapters),
             'totalChapters': total_chapters,
             'sourceUrl': manifest['sourceUrl'],
-            'cover': f'comics/{aid}/cover.jpg',
+            'cover': f'comics/{dir_name}/cover.jpg',
             'hasReader': True,
             'hasZip': True,
             'zipName': manifest['zip'],

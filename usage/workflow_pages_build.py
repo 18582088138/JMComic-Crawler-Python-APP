@@ -184,7 +184,7 @@ def delete_books(ids):
                 continue
             for c in hits:
                 cid = c['id']
-                target = os.path.join(site_dir, 'comics', str(cid))
+                target = os.path.join(site_dir, 'comics', str(c.get('dir') or cid))
                 if os.path.isdir(target):
                     shutil.rmtree(target)
                 idx['comics'].remove(c)

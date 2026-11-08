@@ -131,12 +131,11 @@ async function boot() {
     return;
   }
   if (!S.id) { fatal('缺少本子ID参数'); return; }
-  S.baseUrl = 'comics/' + encodeURIComponent(S.id) + '/';
   let m;
   try {
-    const r = await fetch(S.baseUrl + 'manifest.json?t=' + Date.now(), { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    m = await r.json();
+    const res = await dlstore.fetchBookManifest(S.id);
+    m = res.manifest;
+    S.baseUrl = res.baseUrl;
   } catch (e) {
     fatal('本子不存在或尚未爬取', 'manifest 加载失败，可能还在部署中，稍等 1~2 分钟刷新试试');
     return;

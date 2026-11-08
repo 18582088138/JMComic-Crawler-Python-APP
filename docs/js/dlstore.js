@@ -28,13 +28,37 @@ export function bookFiles(o) {
 
 export function rawUrls(repo, o, fileName) {
   const site = o.site || siteOf(o.id);
-  const p = `data/${site}/comics/${encodeURIComponent(o.id)}/${encodeURIComponent(fileName)}`;
+  const dir = o.dir || o.id;   // V2.1：新书目录 id_部分标题，旧书纯 id
+  const p = `data/${site}/comics/${encodeURIComponent(dir)}/${encodeURIComponent(fileName)}`;
   return [
     `https://raw.githubusercontent.com/${repo}/${p}`,
     `https://github.com/${repo}/raw/${p}`,
     // 开发/mock 兜底：本地 http.server 调试或迁移过渡期 gh-pages 上的旧 zip
-    `comics/${encodeURIComponent(o.id)}/${encodeURIComponent(fileName)}`,
+    `comics/${encodeURIComponent(dir)}/${encodeURIComponent(fileName)}`,
   ];
+}
+
+/**
+ * 拉取本子 manifest：先按纯 id 目录直取（旧书），
+ * 404 时到聚合索引 data/comics.json 按 id 查 dir（V2.1 的 id_标题目录）再取。
+ * 返回 { manifest, baseUrl }（baseUrl 用于旧格式在线阅读的散图前缀）。
+ */
+export async function fetchBookManifest(id) {
+  const base = 'comics/' + encodeURIComponent(id) + '/';
+  try {
+    const r = await fetch(base + 'manifest.json?t=' + Date.now(), { cache: 'no-store' });
+    if (r.ok) return { manifest: await r.json(), baseUrl: base };
+  } catch (e) { /* 落到 dir 回退 */ }
+  const r2 = await fetch('data/comics.json?t=' + Date.now(), { cache: 'no-store' });
+  if (!r2.ok) throw new Error('书架索引加载失败');
+  const data = await r2.json();
+  const entry = (data.comics || []).find(c => String(c.id) === String(id));
+  if (!entry) throw new Error('本子不存在或尚未爬取');
+  const dir = entry.dir || entry.id;
+  const base2 = 'comics/' + encodeURIComponent(dir) + '/';
+  const r3 = await fetch(base2 + 'manifest.json?t=' + Date.now(), { cache: 'no-store' });
+  if (!r3.ok) throw new Error('manifest 加载失败，可能还在部署中，稍等刷新');
+  return { manifest: await r3.json(), baseUrl: base2 };
 }
 
 /* ---------- 注册表（localStorage jm_dl_<id>） ---------- */

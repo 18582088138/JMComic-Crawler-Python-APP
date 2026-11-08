@@ -230,7 +230,7 @@ def migrate_site(site_dir, site, dry=False):
     changed = False
     for c in comics:
         cid = str(c.get('id', ''))
-        comic_dir = os.path.join(site_dir, 'comics', cid)
+        comic_dir = os.path.join(site_dir, 'comics', str(c.get('dir') or cid))
         if not os.path.isdir(comic_dir):
             stats['skip'] += 1
             continue

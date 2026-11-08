@@ -41,7 +41,7 @@ function render() {
     `<i>${relTime(m.updatedAt)}更新</i>` +
     `<i class="bid-detail" title="书架ID">ID: ${esc(m.id)}</i>`;
   $('#bookCover').innerHTML = m.id
-    ? `<img src="comics/${encodeURIComponent(m.id)}/cover.jpg?t=${encodeURIComponent(m.updatedAt || '')}" alt="">`
+    ? `<img src="comics/${encodeURIComponent(m.dir || m.id)}/cover.jpg?t=${encodeURIComponent(m.updatedAt || '')}" alt="">`
     : '';
   if (m.tags && m.tags.length) {
     $('#bookTags').innerHTML = m.tags.slice(0, 8).map(t => `<span>${esc(t)}</span>`).join('');
@@ -150,9 +150,8 @@ export function showBook(id) {
   manifest = null;
   $('#bookTitle').textContent = '加载中…';
   $('#bookChapters').innerHTML = '<div class="sk" style="aspect-ratio:auto;height:56px"></div>';
-  fetch(`comics/${encodeURIComponent(id)}/manifest.json?t=${Date.now()}`, { cache: 'no-store' })
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(m => { manifest = m; render(); })
+  dlstore.fetchBookManifest(id)
+    .then(({ manifest: m }) => { manifest = m; render(); })
     .catch(() => {
       $('#bookTitle').textContent = '本子不存在或尚未爬取';
       $('#bookChapters').innerHTML = '<div class="wempty">manifest 加载失败，可能还在部署中，稍等 1~2 分钟刷新试试。</div>';

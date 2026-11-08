@@ -272,5 +272,10 @@ Actions Workflow permissions = write；Issues = 开启。
     **二期备选**：zip 移 GitHub Releases（仓库 ~50MB）但实测资产**无 CORS 头**，
     网页全自动阅读不可行（仅导航下载+本地导入半自动），届时需评估 R2 等外部存储
 - 后续可选项：抓取队列跨设备同步（localStorage → 云端 queue.json，含 keep 设置同步——
-  keep 按「提交任务的设备」取值是书架被误硬删的隐患）、逐本即时上架（装配移入循环内）、
-  data 分支目录名带部分标题（entry 加 dir 字段，向后兼容）
+  keep 按「提交任务的设备」取值是书架被误硬删的隐患）、二期存储外置（Releases 实测无 CORS，需评估 R2）
+- **已完成的追加优化（2026-11-08，V2.0 之后）**：
+  - retention 硬删可见化：删除清单写入 last_run.json，爬取页「本次自动清理 N 本」提示（A）
+  - 逐本即时上架：gh-pages worktree 常开，每本爬完立即装配+推送+POST /pages/builds（B）
+  - 新本子目录带部分标题：`comics/<id>_<slug>/`，index/manifest 加 `dir` 字段，
+    `dir || id` 回退、同书目录终身不变；manifest 解析走 `dlstore.fetchBookManifest`
+    （纯 id 直取 → 聚合索引查 dir 回退），rawUrls 同步按 dir（D）

@@ -166,21 +166,26 @@ def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
     META_FILES = ('manifest.json', 'cover.jpg')
     with open(os.path.join(site_dir, 'index.json'), 'r', encoding='utf-8') as f:
         site_index = json.load(f)
-    new_ids = {c['id'] for c in site_index.get('comics', [])}
+    # V2.1：目录名可能是 id_部分标题（新书），旧书仍是纯 id——统一按索引 dir 解析
+    dir_of = {str(c['id']): str(c.get('dir') or c['id']) for c in site_index.get('comics', [])}
+    new_ids = set(dir_of.keys())
 
     data_dir = os.path.join(pages_dir, 'data')
     os.makedirs(data_dir, exist_ok=True)
     old_index_path = os.path.join(data_dir, f'index-{site}.json')
     old_ids = set()
+    old_dir_of = {}
     if os.path.isfile(old_index_path):
         try:
             with open(old_index_path, 'r', encoding='utf-8') as f:
-                old_ids = {c['id'] for c in json.load(f).get('comics', [])}
+                old_comics = json.load(f).get('comics', [])
+            old_ids = {c['id'] for c in old_comics}
+            old_dir_of = {str(c['id']): str(c.get('dir') or c['id']) for c in old_comics}
         except (json.JSONDecodeError, OSError):
             pass
 
     for cid in old_ids - new_ids:
-        target = os.path.join(pages_dir, 'comics', str(cid))
+        target = os.path.join(pages_dir, 'comics', old_dir_of.get(cid) or str(cid))
         if os.path.isdir(target):
             shutil.rmtree(target)
             log(f'gh-pages: 移除已下架 {cid}')
@@ -188,8 +193,9 @@ def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
     copy_ids = new_ids if only_ids is None else (new_ids & set(only_ids))
     src_comics = os.path.join(site_dir, 'comics')
     for cid in copy_ids:
-        src = os.path.join(src_comics, str(cid))
-        dest = os.path.join(pages_dir, 'comics', str(cid))
+        d = dir_of[cid]
+        src = os.path.join(src_comics, d)
+        dest = os.path.join(pages_dir, 'comics', d)
         if not os.path.isdir(src):
             continue
         # 整目录替换：顺带清掉 v2 时代装配进来的散图（迁移期间自然瘦身）
