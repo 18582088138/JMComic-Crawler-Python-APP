@@ -1,0 +1,24 @@
+{
+  "site": "mkzhan",
+  "updatedAt": "2026-11-08T14:06:58Z",
+  "comics": [
+    {
+      "id": "mkz-207622",
+      "site": "mkzhan",
+      "title": "妖神记",
+      "author": "{{ item.author_title }}",
+      "pageCount": 14,
+      "chapterCount": 1,
+      "totalChapters": 1,
+      "sourceUrl": "https://www.mkzhan.com/207622/",
+      "cover": "comics/mkz-207622_妖神记/cover.jpg",
+      "hasReader": true,
+      "hasZip": true,
+      "zipName": "mkz-207622.zip",
+      "updatedAt": "2026-10-22T22:48:21Z",
+      "sizeBytes": 4316422,
+      "zipParts": null,
+      "dir": "mkz-207622_妖神记"
+    }
+  ]
+}

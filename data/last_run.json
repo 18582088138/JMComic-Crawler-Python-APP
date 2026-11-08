@@ -1,0 +1,17 @@
+{
+  "ts": "2026-11-08T14:07:03Z",
+  "status": "success",
+  "target": "https://www.mkzhan.com/43/",
+  "source": "mkzhan",
+  "run_url": "https://github.com/18582088138/JMComic-Crawler-Python-APP/actions/runs/42488139264",
+  "shelf_id": "mkz-43",
+  "title": "偷星九月天",
+  "assembled": true,
+  "done": [
+    "mkz-43"
+  ],
+  "skipped": [],
+  "failed": [],
+  "removed": [],
+  "removedCount": 0
+}
