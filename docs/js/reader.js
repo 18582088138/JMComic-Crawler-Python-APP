@@ -158,8 +158,7 @@ function showDownloadGate(m, needGrant) {
     : '漫画包保存在 GitHub 分支上，首次阅读需下载到本机；下载后离线秒开，之后无需等待。';
   const files = dlstore.bookFiles(m);
   $('#dlGateSize').textContent = needGrant ? '' :
-    (files.length > 1 ? `共 ${files.length} 个分卷包` : '') +
-    (m.sizeBytes ? `约 ${fmtMB(m.sizeBytes)}（含所有章节）` : '');
+    `共 ${m.pageCount || 0} 页 · ${files.length > 1 ? files.length + ' 个分卷包' : '1 个压缩包'}`;
   btn.textContent = needGrant ? '授权并打开' : '开始下载';
   st.textContent = '';
   bar.style.display = 'none';
