@@ -32,6 +32,8 @@ export function rawUrls(repo, o, fileName) {
   return [
     `https://raw.githubusercontent.com/${repo}/${p}`,
     `https://github.com/${repo}/raw/${p}`,
+    // 开发/mock 兜底：本地 http.server 调试或迁移过渡期 gh-pages 上的旧 zip
+    `comics/${encodeURIComponent(o.id)}/${encodeURIComponent(fileName)}`,
   ];
 }
 
