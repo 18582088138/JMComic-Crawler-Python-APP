@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  pages: write    # 显式触发 Pages 构建（POST /pages/builds；缺此权限会 403，此前被 || true 掩盖）
 
 concurrency:
   group: pages-deploy

@@ -65,9 +65,11 @@
   跨 data 分支按 ID 删目录+清索引，gh-pages 同步移除；
   **本地下载的 zip 不随下架删除**（用户资产，设置页本地清单单独管理）。
 
-**已知限制**：GITHUB_TOKEN 推送 gh-pages **不会自动触发 Pages 构建**（GitHub 限制），
+**已知限制**：GITHUB_TOKEN 推送 gh-pages **不保证自动触发 Pages 构建**（实测有成功也有失败案例），
 两个工作流都在推送后显式 `POST /repos/{repo}/pages/builds` 请求部署（含失败路径：
 `last_run.json`/`wishlist.json` 是 Contents API 直写 gh-pages 的，同样需要部署才可见）。
+**该 POST 需要 workflow 的 `pages: write` 权限**——此前两个工作流只有 contents/issues 权限，
+POST 一直 403 被 `|| true` 掩盖（2026-11-08 补上 pages: write 后恢复显式触发）。
 gh-pages 装配需拉取全量工作区（V2.0 起仅 MB 级，不再是瓶颈）。
 
 ## 3. 文件结构与职责
