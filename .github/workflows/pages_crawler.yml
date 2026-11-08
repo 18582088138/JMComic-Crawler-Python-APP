@@ -12,7 +12,7 @@ on:
     inputs:
       TARGET:
         type: string
-        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。__cleanup__=保留清理，__delete__=按 DELETE_IDS 删除'
+        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。__cleanup__=保留清理，__delete__=按 DELETE_IDS 删除，__migrate__=V2.0 zip-only 存量迁移（SOURCE 选站点/auto=全部）'
         required: true
 
       DELETE_IDS:
@@ -23,6 +23,11 @@ on:
 
       FORCE:
         description: '强制重爬（勾选后跳过「已爬取检测」，连载作品重爬不需要勾）'
+        type: boolean
+        default: false
+
+      MIGRATE_DRY:
+        description: '仅当 TARGET=__migrate__：dry-run 校验（重写 manifest/分卷计划只打印不落盘不推送）'
         type: boolean
         default: false
 
@@ -86,6 +91,7 @@ jobs:
       JM_PAGES_INPUT: ${{ github.event.inputs.TARGET || github.event.issue.title }}
       JM_PAGES_DELETE_IDS: ${{ github.event.inputs.DELETE_IDS }}
       JM_PAGES_FORCE: ${{ github.event.inputs.FORCE == 'true' && '1' || '' }}
+      JM_PAGES_MIGRATE_DRY: ${{ github.event.inputs.MIGRATE_DRY == 'true' && '1' || '' }}
       JM_PAGES_MODE_INPUT: ${{ github.event.inputs.MODE }}
       JM_PAGES_SOURCE: ${{ github.event.inputs.SOURCE || 'auto' }}
       JM_PAGES_BATCH: ${{ github.event.inputs.BATCH || 1 }}

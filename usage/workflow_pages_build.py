@@ -10,6 +10,8 @@
 环境变量输入：
     JM_PAGES_INPUT      目标链接或ID（必填），任意已支持站点；纯数字默认 JMComic 车号。
                         特殊值 __cleanup__：不爬取，按 KEEP 对所有站点执行保留清理
+                        特殊值 __delete__：按 DELETE_IDS 跨站删除指定本子
+                        特殊值 __migrate__：V2.0 存量迁移（散图退役、9 本超限书分卷），SOURCE 指定站点/auto=全部
     JM_PAGES_SOURCE     平台：auto（默认，自动识别）或注册 key（jmcomic/mangadex/...）
     JM_PAGES_MODE       产物模式：both（默认）/ read / zip
     JM_PAGES_KEEP       每站书库最多保留几本（默认 30）。
@@ -271,6 +273,15 @@ def main():
         log(f'删除任务: {len(ids)} 本 {ids}')
         delete_books(ids)
         write_maintenance_output()
+        return
+
+    # ---------- V2.0 存量迁移任务（散图退役，zip 单一载体） ----------
+    if raw_input.strip() == '__migrate__':
+        import migrate_zip_only
+        only = None if source in ('', 'auto') else source
+        dry = env('JM_PAGES_MIGRATE_DRY') == '1'
+        log(f'迁移任务: 目标站点 = {only or "全部"}，dry-run = {dry}')
+        migrate_zip_only.migrate_all(REPO_DIR, push=publish, only_site=only, dry=dry)
         return
 
     # ---------- mock：本地构建调试，不碰分支 ----------
