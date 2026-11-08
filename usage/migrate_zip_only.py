@@ -174,10 +174,31 @@ def migrate_book(comic_dir, cid, dry=False):
         return 'skip', '既无 zip 也无散图'
 
     if dry:
-        note = f'{action}（zip={os.path.basename(zip_path) if zip_path else "新打包"}'
-        if has_images:
-            note += f'，散图 {sb.dir_size(images_dir) // 1024}KB 将删除'
-        return action, note + '）'
+        # dry-run = 真实校验不落盘：rewrite 验结构+CRC；rebuild 验散图齐全
+        try:
+            if action == 'rewrite':
+                with zipfile.ZipFile(zip_path) as zf:
+                    _root, folders, by_folder = _zip_layout(zf)
+                    if len(folders) != len(chapters):
+                        raise RuntimeError(f'文件夹数 {len(folders)} != 章节数 {len(chapters)}')
+                    if zf.testzip() is not None:
+                        raise RuntimeError('CRC 校验失败')
+                return 'rewrite', f'校验通过（{len(chapters)} 章，zip 保留仅重写 manifest）'
+            missing = [sb.chapter_key(c) for c in chapters
+                       if not sb.loose_files(comic_dir, sb.chapter_key(c))]
+            if missing:
+                return 'skip', f'散图缺失章节 {missing}（真实迁移会跳过且不删图）'
+            if action == 'rewrite' and has_images:
+                return 'rebuild', '快路径不过，将改从散图重建'
+            return 'rebuild', '可重建（各章散图齐全）'
+        except Exception as e:
+            if action == 'rewrite' and has_images:
+                missing = [sb.chapter_key(c) for c in chapters
+                           if not sb.loose_files(comic_dir, sb.chapter_key(c))]
+                if not missing:
+                    return 'rebuild', f'快路径失败（{e}），将改从散图重建'
+                return 'skip', f'校验失败（{e}）且散图不全'
+            return 'skip', f'校验失败: {e}'
 
     try:
         if action == 'rewrite':
