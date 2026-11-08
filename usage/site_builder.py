@@ -536,11 +536,15 @@ def upsert_index(site_dir, site, entry):
 
 
 def apply_retention(site_dir, keep, protect_id):
-    """每站最多保留 keep 本，删除最旧的本子目录（绝不删除本次构建的本子）"""
+    """每站最多保留 keep 本，删除最旧的本子目录（绝不删除本次构建的本子）。
+
+    返回被硬删的条目列表 [{'id', 'title', 'dir'}...]（供 last_run.json 可见化：
+    保留清理此前是静默的，书架「本子消失」用户无感知）。
+    """
     data = read_index(site_dir)
     comics = data.get('comics', [])
     if keep <= 0 or len(comics) <= keep:
-        return
+        return []
 
     kept, removed = comics[:keep], comics[keep:]
     removed = [c for c in removed if c.get('id') != protect_id]
@@ -550,16 +554,19 @@ def apply_retention(site_dir, keep, protect_id):
                 kept.append(c)
                 break
     if not removed:
-        return
+        return []
 
+    removed_entries = []
     for c in removed:
         cid = c.get('id')
         if not cid or not re.fullmatch(r'\w[\w-]*', str(cid)):
             continue
-        target = os.path.join(site_dir, 'comics', str(cid))
+        target = os.path.join(site_dir, 'comics', str(c.get('dir') or cid))
         if os.path.isdir(target):
             shutil.rmtree(target)
             log(f'清理旧本子: {cid}《{c.get("title", "")}》')
+        removed_entries.append({'id': cid, 'title': c.get('title', ''), 'dir': c.get('dir') or cid})
 
     data['comics'] = kept
     write_index(site_dir, data)
+    return removed_entries

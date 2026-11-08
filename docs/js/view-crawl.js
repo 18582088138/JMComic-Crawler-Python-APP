@@ -356,6 +356,17 @@ function loadLastRun() {
         html += (run.wishlisted ? `<span>已将 ${esc(run.wishlisted)} 记入「设置 → 愿望清单」</span>` : '') +
           (run.run_url ? `<a href="${esc(run.run_url)}" target="_blank" rel="noopener">查看日志 →</a>` : '');
         box.innerHTML = html;
+      } else if ((run.removed || []).length && ageH < 24) {
+        // 保留清理可见化：硬删不再无声发生（书架「本子消失」可追溯）
+        box.style.display = 'block';
+        box.style.borderColor = 'rgba(251,191,36,.4)';
+        const rs = run.removed;
+        box.innerHTML = `<b>🧹 本次自动清理 ${run.removedCount || rs.length} 本（超出每站保留数）</b>` +
+          '<span>' + rs.slice(0, 10).map(r =>
+            esc(`${r.site ? '[' + r.site + '] ' : ''}${r.id}《${(r.title || '').slice(0, 20)}》`)).join('<br>') +
+          (rs.length > 10 ? `<br>…共 ${run.removedCount || rs.length} 本` : '') + '</span>' +
+          '<span>超出保留数的旧本子会被自动硬删；如需保留，请到作品详情页「保存 ZIP 到本机」。已下载到本机的包不受影响。</span>' +
+          (run.run_url ? `<a href="${esc(run.run_url)}" target="_blank" rel="noopener">查看日志 →</a>` : '');
       } else {
         box.style.display = 'none';
       }
