@@ -207,6 +207,7 @@ def cleanup_all_sites(keep):
     if not branches:
         log('没有任何 data 分支，无需清理')
         return
+    cleaned = []
     for branch in branches:
         site = branch.split('/', 1)[1]
         site_dir = os.path.join(REPO_DIR, 'build', 'site_worktree')
@@ -216,7 +217,9 @@ def cleanup_all_sites(keep):
             if before <= keep:
                 log(f'{site}: {before} 本，无需清理')
                 continue
-            site_builder.apply_retention(site_dir, keep, protect_id=None)
+            removed = site_builder.apply_retention(site_dir, keep, protect_id=None)
+            for r in removed:
+                cleaned.append({'id': r['id'], 'title': r.get('title', ''), 'site': site})
             after = len(site_builder.read_index(site_dir).get('comics', []))
             log(f'{site}: {before} → {after} 本')
             docs_dir = os.path.join(REPO_DIR, 'docs')
@@ -225,6 +228,9 @@ def cleanup_all_sites(keep):
         finally:
             branch_store.close_worktree(REPO_DIR, site_dir)
     log('清理任务完成')
+    # 保留清理此前是静默的：写入 last_run.json 让删除可见（书架「本子消失」不再无感知）
+    report_status('success', '__cleanup__', 'all', assembled=True,
+                  removed=cleaned[:50], removedCount=len(cleaned))
 
 
 def cleanup_raw(raw_dir):
@@ -308,11 +314,16 @@ def main():
     run_budget = int(env('JM_PAGES_RUN_BUDGET', '50') or '50')  # 分钟：软超时，防单任务卡死全队
     log(f'任务数: {len(targets)}，模式: {mode}，保留: {keep}，批次: {batch}，强制: {force}')
 
-    worktrees = {}       # site -> site_dir（多目标任务期间保持打开，最后统一装配）
+    worktrees = {}       # site -> site_dir（多目标任务期间保持打开）
     touched = []         # (site_dir, site, entry_id)
     results = []         # ('ok'|'skip'|'fail', target, entry_or_error)
+    retention_removed = []  # 本次运行被保留策略硬删的条目（写入 last_run 可见化）
     first_entry = None
     run_start = time.time()
+    pages_dir = os.path.join(REPO_DIR, 'build', 'gh_pages_worktree')
+    docs_dir = os.path.join(REPO_DIR, 'docs')
+    pages_opened = False   # gh-pages worktree 在 run 内常开（逐本即时上架）
+    assembled_any = False
     try:
         for ti, target in enumerate(targets, 1):
             elapsed_min = (time.time() - run_start) / 60
@@ -339,9 +350,22 @@ def main():
                         worktrees[site] = sd
                     site_dir = worktrees[site]
                     entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
-                    site_builder.apply_retention(site_dir, keep + RETENTION_GRACE, protect_id=meta['id'])
+                    removed = site_builder.apply_retention(site_dir, keep + RETENTION_GRACE, protect_id=meta['id'])
+                    for r in removed:
+                        retention_removed.append({'id': r['id'], 'title': r.get('title', ''), 'site': site})
                     branch_store.push_data_branch(site_dir, site, f'data: [{site}] +{entry["id"]}', push=True)
                     touched.append((site_dir, site, entry['id']))
+                    # 逐本即时上架：该本立即装配推送 + 触发 Pages 构建，
+                    # 不等整个队列爬完（gh-pages 已瘦身 MB 级，逐本装配是秒级操作）
+                    try:
+                        if not pages_opened:
+                            branch_store.open_branch_worktree(REPO_DIR, branch_store.PAGES_BRANCH, pages_dir)
+                            branch_store.sync_frontend(REPO_DIR, pages_dir, docs_dir)
+                            pages_opened = True
+                        if branch_store.assemble_book_step(REPO_DIR, pages_dir, site_dir, site, entry['id'], push=True):
+                            assembled_any = True
+                    except Exception as e:
+                        log(f'⚠️ 逐本装配失败（成果已在 data 分支，巡检会补装）: {type(e).__name__}: {e}')
                 else:
                     site_dir = os.path.join(REPO_DIR, 'build', 'site_out')
                     entry = site_builder.build_site(meta, raw_dir_actual, site_dir, mode)
@@ -359,16 +383,18 @@ def main():
                 results.append(('fail', target, f'{type(e).__name__}: {e}'[:300]))
             cleanup_raw(raw_dir)
     finally:
-        # 装配与爬取解耦：装配失败不阻断爬取结论（定时巡检/手动装配会补上）
-        assembled = False
+        # 逐本上架为主、整批兜底为辅：若一本都没装配上（如 gh-pages 拉取失败），
+        # 收尾再尝试一次整批装配；再失败也不阻断爬取结论（15 分钟巡检会补装）
+        assembled = assembled_any
         if publish:
-            if touched:
+            if touched and not assembled_any:
                 try:
-                    docs_dir = os.path.join(REPO_DIR, 'docs')
                     branch_store.assemble_gh_pages(REPO_DIR, docs_dir, touched, push=True)
                     assembled = True
                 except Exception as e:
                     log(f'⚠️ 装配失败（爬取成果已在 data 分支，稍后会自动/手动装配）: {type(e).__name__}: {e}')
+            if pages_opened:
+                branch_store.close_worktree(REPO_DIR, pages_dir)
             for site, sd in worktrees.items():
                 branch_store.close_worktree(REPO_DIR, sd)
 
@@ -378,7 +404,8 @@ def main():
     done_entries = ok_entries + skip_entries
     if not done_entries:
         report_status('failed', raw_input, source, assembled=assembled,
-                      error='；'.join(f'{t[:40]}: {e}' for t, e in fails)[:500])
+                      error='；'.join(f'{t[:40]}: {e}' for t, e in fails)[:500],
+                      removed=retention_removed[:50], removedCount=len(retention_removed))
         raise SystemExit(1)
     if fails:
         log(f'部分失败 {len(fails)}/{len(targets)}: {[t for t, _ in fails]}')
@@ -390,7 +417,8 @@ def main():
                   assembled=assembled,
                   done=[e['id'] for e in done_entries][:20],
                   skipped=[e['id'] for e in skip_entries][:20],
-                  failed=[{'target': t[:80], 'error': e[:200]} for t, e in fails][:20])
+                  failed=[{'target': t[:80], 'error': e[:200]} for t, e in fails][:20],
+                  removed=retention_removed[:50], removedCount=len(retention_removed))
     write_outputs(done_entries[0], done_entries[0].get('site', ''))
     output_file = env('GITHUB_OUTPUT')
     if output_file:

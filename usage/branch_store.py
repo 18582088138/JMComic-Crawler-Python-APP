@@ -250,6 +250,45 @@ def worktree_head_sha(worktree):
     return git('rev-parse', 'HEAD', cwd=worktree)
 
 
+def assemble_book_step(repo, pages_dir, site_dir, site, changed_id, push=True):
+    """逐本即时上架：只装配一本（manifest/封面）→ gh-pages 推送 → 触发 Pages 构建。
+
+    与 assemble_gh_pages 的区别：不重开 worktree（调用方在 run 内常开），
+    每本爬完立即生效，不用等整个队列爬完。gh-pages 瘦身（MB 级）后逐本装配是秒级操作。
+    """
+    sync_site_comics(site_dir, pages_dir, site, only_ids={changed_id})
+    sha = worktree_head_sha(site_dir)
+    marker = os.path.join(pages_dir, 'data', f'.assembled-{site}')
+    with open(marker, 'w') as f:
+        f.write(sha)
+    ok = commit_and_push(pages_dir, PAGES_BRANCH,
+                         f'pages: 上架 [{site}] {changed_id} [skip ci]', push=push)
+    if ok and push:
+        request_pages_build()
+    return ok
+
+
+def request_pages_build():
+    """显式触发 Pages 构建（GITHUB_TOKEN 推 gh-pages 不自动触发，GitHub 限制）。
+
+    逐本上架时由 Python 直接调用；失败仅记日志（15 分钟巡检/下次爬取会再触发）。
+    """
+    token = os.getenv('GITHUB_TOKEN')
+    if not token:
+        return False
+    url = f'https://api.github.com/repos/{_repo_slug()}/pages/builds'
+    req = urllib.request.Request(url, data=b'{}', method='POST', headers={
+        'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json'})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read()
+        log('Pages 构建已触发')
+        return True
+    except Exception as e:
+        log(f'触发 Pages 构建失败（巡检/下次爬取会再触发）: {e}')
+        return False
+
+
 def assemble_gh_pages(repo, docs_dir, syncs, push=True):
     """一次性装配 gh-pages。syncs: [(site_dir, site, changed_id_or_None)]
 
