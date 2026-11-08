@@ -115,6 +115,14 @@ function registerSW() {
   });
 }
 
+/* 新格式（v3）判别：pages 指向 zip 内条目（而非 v2 的线上散图 images/...）。
+   注意 v2 书也有 zip 字段，不能用「有没有 zip」判断——否则迁移前线上阅读会被破坏 */
+function isV3Manifest(m) {
+  if (m.parts && m.parts.length) return true;
+  const withPages = (m.chapters || []).filter(c => c.pages && c.pages.length);
+  return withPages.length > 0 && withPages.every(c => !String(c.pages[0]).startsWith('images/'));
+}
+
 /* ================= 初始化 ================= */
 async function boot() {
   registerSW();
@@ -135,7 +143,7 @@ async function boot() {
   }
   if (!m.chapters || !m.chapters.length) { fatal('本子不存在或尚未爬取'); return; }
 
-  if (!dlstore.bookFiles(m).length) {
+  if (!isV3Manifest(m)) {
     // 旧格式（V2.0 迁移前）：线上散图仍在 → 在线阅读
     initWithManifest(m);
     return;
