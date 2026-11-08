@@ -1,5 +1,12 @@
-/* 阅读器：卷轴/翻页双模式 + 章节跳转 + 进度记忆 + SW 全本离线缓存 + 本地 ZIP 解包 */
+/* 阅读器（V2.0 zip-only）：卷轴/翻页双模式 + 章节跳转 + 进度记忆 + 本地 ZIP 直读
+   - 新格式本子：漫画包（zip/分卷）自动下载到本机（OPFS/自定义文件夹），
+     manifest 为目录钥匙、JSZip 按条目直读（STORED 零解压），分卷按需懒加载
+   - 未下载 → 引导页一键下载（进度/断点续传）；下载后离线秒开
+   - 旧格式（迁移前的线上散图）→ 回退在线阅读，兼容过渡期
+   - 手动 ZIP 解包（reader.html?local=1）保留 */
 'use strict';
+
+import * as dlstore from './dlstore.js';
 
 const $ = s => document.querySelector(s);
 let toastTimer = null;
@@ -21,6 +28,9 @@ const store = {
   },
   set(k, v) { try { localStorage.setItem('jm_' + k, JSON.stringify(v)); } catch (e) {} },
 };
+function fmtMB(b) {
+  return b >= 10485760 ? (b / 1048576).toFixed(0) + 'MB' : (b / 1048576).toFixed(1) + 'MB';
+}
 
 /* ================= 状态 ================= */
 const qs = new URLSearchParams(location.search);
@@ -39,18 +49,63 @@ const S = {
 
 function chapter() { return S.manifest.chapters[S.ch - 1]; }
 function pageCount() { return chapter().pages.length; }
-function pageUrl(chIdx, pIdx) {
+
+/* ================= 页面来源（本地 zip / 旧格式在线） ================= */
+let zipSource = null;          // 本地 zip 源；null = 旧格式在线/手动解包 blob
+const pageCache = new Map();   // "ch:p" → objectURL（换章回收）
+
+function makeZipSource(m, getBlob) {
+  const files = dlstore.bookFiles(m);
+  const offsets = [];
+  let acc = 0;
+  m.chapters.forEach(c => { offsets.push(acc); acc += (c.pageCount || 0); });
+  const parts = files.length > 1
+    ? m.parts.map(p => ({ file: p.file, first: p.firstPage, last: p.lastPage }))
+    : [{ file: files[0] && files[0].name, first: 1, last: acc }];
+  const loaded = {};  // 文件名 → JSZip（分卷按需加载）
+  async function zipOf(file) {
+    if (!loaded[file]) {
+      if (typeof JSZip === 'undefined') throw new Error('解压组件未加载（vendor/jszip）');
+      const blob = await getBlob(file);
+      loaded[file] = await JSZip.loadAsync(blob);
+    }
+    return loaded[file];
+  }
+  return {
+    async getEntry(chIdx, pIdx) {
+      const key = chIdx + ':' + pIdx;
+      if (pageCache.has(key)) return pageCache.get(key);
+      const ch = m.chapters[chIdx - 1];
+      const gp = offsets[chIdx - 1] + pIdx;   // 全局页序 → 定位分卷
+      let part = parts.find(p => gp >= p.first && gp <= p.last) || parts[0];
+      const zip = await zipOf(part.file);
+      const entryName = ch.pages[pIdx - 1];
+      const entry = zip.file(entryName);
+      if (!entry) throw new Error('包内缺少页面 ' + entryName);
+      const blob = await entry.async('blob');
+      const url = URL.createObjectURL(blob);
+      pageCache.set(key, url);
+      return url;
+    },
+  };
+}
+
+function releasePageCache() {
+  pageCache.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) { /* noop */ } });
+  pageCache.clear();
+}
+
+/* 解析页面 URL：本地 zip → objectURL；旧格式/手动解包 → 原路径直读 */
+async function resolvePage(chIdx, pIdx) {
+  if (zipSource) return zipSource.getEntry(chIdx, pIdx);
   const u = S.manifest.chapters[chIdx - 1].pages[pIdx - 1];
   return /^(blob|data|https?):/.test(u) ? u : (S.baseUrl + u);
 }
 
 /* ================= Service Worker ================= */
-let swReady = false;
 function registerSW() {
   if (!('serviceWorker' in navigator) || isLocal) return;
-  navigator.serviceWorker.register('sw.js')
-    .then(reg => navigator.serviceWorker.ready.then(() => { swReady = true; updateOfflineUI(); }))
-    .catch(() => {});
+  navigator.serviceWorker.register('sw.js').catch(() => {});
   // 新 SW 接管（部署了新前端）时自动刷新一次（进度已自动保存）
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -60,60 +115,8 @@ function registerSW() {
   });
 }
 
-/* ================= 全本离线缓存 ================= */
-let caching = false;
-function updateOfflineUI() {
-  const btn = $('#offlineBtn');
-  if (!S.manifest || isLocal) return;
-  btn.style.display = 'grid';
-  btn.classList.toggle('on', !!store.get('offline_' + S.id, false));
-  $('#offlineRow').style.display = 'flex';
-  const done = store.get('offline_' + S.id, false);
-  $('#offlineHint').textContent = done
-    ? '已缓存全本，断网可看；点右侧按钮可重新缓存'
-    : (swReady ? '把全本图片缓存到本机，断网也能看' : '当前浏览器不支持离线缓存（需 HTTPS 与现代浏览器）');
-  $('#doOfflineBtn').textContent = done ? '重新缓存' : '开始缓存';
-}
-
-async function cacheWholeComic() {
-  if (caching || !S.manifest) return;
-  if (!swReady) { toast('当前环境不支持离线缓存'); return; }
-  caching = true;
-  const urls = [];
-  S.manifest.chapters.forEach(c => c.pages.forEach((u, i) => urls.push(pageUrl(c.index, i + 1))));
-  const bar = $('#dlBar'), fill = $('#dlBar i'), prog = $('#dlProg');
-  bar.style.display = 'block';
-  prog.style.display = 'block';
-  let doneCount = 0, failCount = 0;
-  const CONCURRENCY = 4;
-  const queue = urls.slice();
-  toast('开始缓存全本 ' + urls.length + ' 张图…');
-  async function worker() {
-    while (queue.length) {
-      const u = queue.shift();
-      try { await fetch(u, { cache: 'no-cache' }); } catch (e) { failCount++; }
-      doneCount++;
-      const p = doneCount / urls.length;
-      fill.style.width = (p * 100).toFixed(1) + '%';
-      prog.style.setProperty('--p', p.toFixed(3));
-    }
-  }
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  caching = false;
-  bar.style.display = 'none';
-  prog.style.display = 'none';
-  if (failCount === 0) {
-    store.set('offline_' + S.id, true);
-    toast('✅ 全本已缓存，断网也能看');
-  } else {
-    toast(`缓存完成，${failCount} 张失败（阅读时会自动补缓存）`, 3000);
-    if (doneCount - failCount > urls.length * 0.8) store.set('offline_' + S.id, true);
-  }
-  updateOfflineUI();
-}
-
 /* ================= 初始化 ================= */
-function boot() {
+async function boot() {
   registerSW();
   if (isLocal) {
     initLocalGate();
@@ -121,30 +124,91 @@ function boot() {
   }
   if (!S.id) { fatal('缺少本子ID参数'); return; }
   S.baseUrl = 'comics/' + encodeURIComponent(S.id) + '/';
-  fetch(S.baseUrl + 'manifest.json?t=' + Date.now(), { cache: 'no-store' })
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(initWithManifest)
-    .catch(() => fatal('本子不存在或尚未爬取', 'manifest 加载失败，可能还在部署中，稍等 1~2 分钟刷新试试'));
+  let m;
+  try {
+    const r = await fetch(S.baseUrl + 'manifest.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    m = await r.json();
+  } catch (e) {
+    fatal('本子不存在或尚未爬取', 'manifest 加载失败，可能还在部署中，稍等 1~2 分钟刷新试试');
+    return;
+  }
+  if (!m.chapters || !m.chapters.length) { fatal('本子不存在或尚未爬取'); return; }
+
+  if (!dlstore.bookFiles(m).length) {
+    // 旧格式（V2.0 迁移前）：线上散图仍在 → 在线阅读
+    initWithManifest(m);
+    return;
+  }
+
+  // 新格式：漫画包在 data 分支，先确认本地是否已下载
+  const state = await dlstore.checkFiles(m);
+  if (state === 'ready') return initWithManifest(m, true);
+  showDownloadGate(m, state === 'grant');
 }
 
-function initWithManifest(m) {
-  if (!m.chapters || !m.chapters.length) { fatal('本子不存在或尚未爬取'); return; }
+/* 下载/授权引导页：首次阅读一键下载（或补授权），完成后自动开读 */
+function showDownloadGate(m, needGrant) {
+  const gate = $('#dlGate');
+  gate.classList.add('show');
+  const btn = $('#dlStartBtn'), st = $('#dlGateStatus'), bar = $('#dlGateBar');
+  $('#dlGateTitle').textContent = needGrant ? '需要本地文件夹授权' : '下载到本机后阅读';
+  $('#dlGateHint').textContent = needGrant
+    ? '你选择了把漫画保存到自定义文件夹，需要点一下授权（每次冷启动仅需一次）'
+    : '漫画包保存在 GitHub 分支上，首次阅读需下载到本机；下载后离线秒开，之后无需等待。';
+  const files = dlstore.bookFiles(m);
+  $('#dlGateSize').textContent = needGrant ? '' :
+    (files.length > 1 ? `共 ${files.length} 个分卷包` : '') +
+    (m.sizeBytes ? `约 ${fmtMB(m.sizeBytes)}（含所有章节）` : '');
+  btn.textContent = needGrant ? '授权并打开' : '开始下载';
+  st.textContent = '';
+  bar.style.display = 'none';
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      if (needGrant) {
+        const ok = await dlstore.grantFsAccess();
+        if (!ok) { st.textContent = '未获得授权，仍可点击重试'; btn.disabled = false; return; }
+        gate.classList.remove('show');
+        initWithManifest(m, true);
+        return;
+      }
+      bar.style.display = 'block';
+      btn.textContent = '下载中…';
+      await dlstore.downloadBook(m, p => {
+        if (p.total) {
+          $('#dlGateFill').style.width = Math.min(100, p.received / p.total * 100).toFixed(1) + '%';
+        }
+        st.textContent = `第 ${p.fileIndex}/${p.fileCount} 个包 · ${fmtMB(p.received)}`
+          + (p.total ? ` / ${fmtMB(p.total)}` : '');
+      });
+      gate.classList.remove('show');
+      initWithManifest(m, true);
+      toast('✅ 下载完成，之后离线秒开');
+    } catch (e) {
+      st.textContent = '❌ ' + (e.message || e) + '（已保留断点，点按钮续传）';
+      btn.textContent = '重试下载';
+      btn.disabled = false;
+    }
+  };
+}
+
+function initWithManifest(m, useLocal) {
   S.manifest = m;
   if (!S.id) S.id = m.id;
-  // 重抓（批次合并/更新）后清掉旧图片缓存，避免 SW 继续供旧图
-  const stamp = store.get('offline_ts_' + S.id, '');
-  if (m.updatedAt && stamp && stamp !== m.updatedAt && navigator.serviceWorker) {
-    try {
-      navigator.serviceWorker.controller?.postMessage({ type: 'purge', ids: [S.id] });
-    } catch (e) { /* noop */ }
+  if (useLocal) {
+    zipSource = makeZipSource(m, file => dlstore.getFileBlob(m.id, file));
   }
-  if (m.updatedAt) store.set('offline_ts_' + S.id, m.updatedAt);
   document.title = '《' + m.title + '》- 云书架';
   $('#comicTitle').textContent = m.title;
-  if (m.hasZip && m.zip) {
+  if (dlstore.bookFiles(m).length) {
     const zb = $('#zipBtn');
     zb.style.display = 'grid';
-    zb.addEventListener('click', () => { location.href = S.baseUrl + encodeURIComponent(m.zip); });
+    zb.addEventListener('click', () => {
+      const n = dlstore.saveToSystem(m);
+      if (n) toast(n > 1 ? `已开始 ${n} 个分卷的下载（见浏览器下载列表）` : '已开始下载到系统文件夹');
+    });
   }
   // 恢复进度（优先按章节 key 定位——批次合并后章节序号可能变化）
   if (!S.ch) {
@@ -164,7 +228,6 @@ function initWithManifest(m) {
   if (!S.p) S.p = 1;
   buildChapterList();
   initSettings();
-  updateOfflineUI();
   applyMode(S.mode, true);
   startSweeper();
 }
@@ -266,8 +329,6 @@ $('#prevChBtn').addEventListener('click', () => goChapter(S.ch - 1));
 $('#nextChBtn').addEventListener('click', () => goChapter(S.ch + 1));
 $('#mScroll').addEventListener('click', () => applyMode('scroll'));
 $('#mPaged').addEventListener('click', () => applyMode('paged'));
-$('#offlineBtn').addEventListener('click', cacheWholeComic);
-$('#doOfflineBtn').addEventListener('click', cacheWholeComic);
 
 /* ================= 模式切换 ================= */
 function applyMode(mode, first) {
@@ -285,6 +346,7 @@ function goChapter(n) {
   if (n > S.manifest.chapters.length) { toast('已经是最后一章了'); return; }
   S.ch = n;
   S.p = 1;
+  releasePageCache();   // 换章回收 objectURL，长本不占内存
   $('#endCard').classList.remove('show');
   buildChapterList();
   renderChapter();
@@ -348,7 +410,7 @@ function renderScroll(first) {
   let html = '';
   for (let i = 1; i <= ch.pages.length; i++) {
     html += '<div class="spage" data-p="' + i + '">' +
-      '<img data-src="' + esc(pageUrl(S.ch, i)) + '" alt="第' + i + '页">' +
+      '<img data-ch="' + S.ch + '" data-p="' + i + '" alt="第' + i + '页">' +
       '<div class="pno">' + i + ' / ' + ch.pages.length + '</div></div>';
   }
   html += '<div class="chnav">' +
@@ -381,54 +443,59 @@ function renderScroll(first) {
 
   if (S.p > 1) setTimeout(() => scrollToPage(S.p, true), 80);
 }
-function loadScrollImg(img) {
-  img.src = img.dataset.src;
-  img.dataset.retries = '0';
-  img.addEventListener('error', function onErr() {
-    const box = img.parentElement;
-    const retries = parseInt(img.dataset.retries || '0', 10);
-    if (retries < 2 && !/^blob:/.test(img.dataset.src)) {
-      // 网络抖动自动重试（最多 2 次，指数退避）
-      img.dataset.retries = String(retries + 1);
-      setTimeout(() => {
-        const u = img.dataset.src;
-        img.src = u + (u.indexOf('?') >= 0 ? '&' : '?') + 'retry=' + Date.now();
-      }, 1500 * (retries + 1));
-      return;
+async function loadScrollImg(img) {
+  const ch = parseInt(img.dataset.ch, 10), p = parseInt(img.dataset.p, 10);
+  if (!ch || !p || img.dataset.loading) return;
+  img.dataset.loading = '1';
+  try {
+    let u = await resolvePage(ch, p);
+    if (!/^blob:/.test(u) && img.dataset.retry) {
+      u += (u.indexOf('?') >= 0 ? '&' : '?') + 'retry=' + Date.now();
     }
-    if (box.querySelector('.failed')) return;
-    const f = document.createElement('div');
-    f.className = 'failed';
-    f.textContent = '⚠️ 加载失败，点击重试';
-    f.style.minHeight = '160px';
-    f.addEventListener('click', e => {
-      e.stopPropagation();
-      f.remove();
-      img.dataset.retries = '0';
-      const u = img.dataset.src;
-      img.src = /^blob:/.test(u) ? u : (u + (u.indexOf('?') >= 0 ? '&' : '?') + 'retry=' + Date.now());
+    img.dataset.retry = '';
+    img.src = u;
+    img.addEventListener('error', function onErr() {
+      img.removeEventListener('error', onErr);
+      showFailedImg(img, ch, p);
     });
-    box.appendChild(f);
+  } catch (e) {
+    showFailedImg(img, ch, p);
+  }
+}
+function showFailedImg(img, ch, p) {
+  const box = img.parentElement;
+  if (box.querySelector('.failed')) return;
+  const f = document.createElement('div');
+  f.className = 'failed';
+  f.textContent = '⚠️ 加载失败，点击重试';
+  f.style.minHeight = '160px';
+  f.addEventListener('click', e => {
+    e.stopPropagation();
+    f.remove();
+    img.dataset.retry = '1';
+    delete img.dataset.loading;
+    loadScrollImg(img);
   });
+  box.appendChild(f);
 }
 
-/* 巡检兜底：懒加载观察器时序或网络中断可能漏图，定期扫描未加载的可见页 */
+/* 巡检兜底：懒加载观察器时序可能漏图，定期扫描未加载的可见页 */
 let sweepTimer = null;
 function startSweeper() {
   stopSweeper();
   sweepTimer = setInterval(() => {
     if (S.mode !== 'scroll') return;
-    document.querySelectorAll('.spage img[data-src]').forEach(img => {
+    document.querySelectorAll('.spage img[data-ch]').forEach(img => {
       const rect = img.parentElement.getBoundingClientRect();
       const near = rect.top < innerHeight * 2 && rect.bottom > -innerHeight * 2;
       if (near && !img.src) loadScrollImg(img);
     });
-    // 已加载但宽度异常小（疑似半加载）的图片自动重试一次
-    document.querySelectorAll('.spage img:not([data-src])').forEach(img => {
+    // 已加载但宽度异常小（疑似半加载）的在线图自动重试一次（blob 直读图不需要）
+    document.querySelectorAll('.spage img[src]').forEach(img => {
       if (img.complete && img.naturalWidth === 0 && !img.dataset.swept) {
         img.dataset.swept = '1';
         const u = img.src.split('?')[0].split('#')[0];
-        img.src = u + '?retry=' + Date.now();
+        if (!/^blob:/.test(u)) img.src = u + '?retry=' + Date.now();
       }
     });
   }, 3000);
@@ -468,7 +535,7 @@ window.addEventListener('scroll', () => {
 
 /* ================= 翻页模式 ================= */
 const preloadCache = {};
-function renderPaged() {
+async function renderPaged() {
   teardownObservers();
   const pv = $('#pageView');
   pv.classList.toggle('fit-width', S.fit === 'width');
@@ -477,7 +544,14 @@ function renderPaged() {
   img.classList.remove('ok');
   $('#spinner').style.display = 'block';
   $('#pretry').style.display = 'none';
-  const url = pageUrl(S.ch, S.p);
+  let url;
+  try {
+    url = await resolvePage(S.ch, S.p);
+  } catch (e) {
+    $('#spinner').style.display = 'none';
+    $('#pretry').style.display = 'block';
+    return;
+  }
   loadOne(url, ok => {
     $('#spinner').style.display = 'none';
     if (!ok) { $('#pretry').style.display = 'block'; return; }
@@ -503,15 +577,17 @@ function loadOne(url, cb, retried) {
   im.src = url;
 }
 function preloadAround() {
-  [[S.ch, S.p + 1], [S.ch, S.p + 2], [S.ch, S.p - 1]].forEach(pair => {
+  [[S.ch, S.p + 1], [S.ch, S.p + 2], [S.ch, S.p - 1]].forEach(async pair => {
     const c = pair[0], p = pair[1];
     if (c >= 1 && c <= S.manifest.chapters.length && p >= 1 && p <= S.manifest.chapters[c - 1].pages.length) {
-      const u = pageUrl(c, p);
-      if (!preloadCache[u]) {
-        const im = new Image();
-        im.onload = () => { preloadCache[u] = 'ok'; };
-        im.src = u;
-      }
+      try {
+        const u = await resolvePage(c, p);
+        if (!preloadCache[u]) {
+          const im = new Image();
+          im.onload = () => { preloadCache[u] = 'ok'; };
+          im.src = u;
+        }
+      } catch (e) { /* 预加载失败不影响主路径 */ }
     }
   });
 }

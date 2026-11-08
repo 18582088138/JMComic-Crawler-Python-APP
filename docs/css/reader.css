@@ -169,3 +169,18 @@ body.paged-mode #pageView{display:block}
 #localGate .lg-status{font-size:.72rem;color:var(--txt2);margin-top:16px;min-height:1.2em;
   max-width:78vw;word-break:break-all}
 #localGate .lg-back{display:inline-block;margin-top:22px;color:var(--ac2);font-size:.78rem;text-decoration:none}
+
+/* ---------- 未下载引导（V2.0 zip-only 首读下载） ---------- */
+#dlGate{position:fixed;inset:0;z-index:250;display:none;place-items:center;background:#0b0d13;text-align:center;padding:24px}
+#dlGate.show{display:grid}
+#dlGate .art{font-size:3.2rem;margin-bottom:14px}
+#dlGate h2{font-size:1.1rem;margin-bottom:8px}
+#dlGate p{font-size:.78rem;color:var(--txt3);line-height:1.8;margin-bottom:8px;max-width:340px;margin-left:auto;margin-right:auto}
+#dlGate .dlg-size{font-size:.72rem;color:var(--ac2);margin-bottom:20px}
+#dlGate .lg-btn{border:none;background:var(--grad);color:#fff;padding:14px 34px;border-radius:15px;font-size:.92rem;cursor:pointer;font-family:inherit}
+#dlGate .lg-btn:active{transform:scale(.96)}
+#dlGate .lg-btn:disabled{opacity:.6;cursor:default}
+#dlGate .lg-status{font-size:.72rem;color:var(--txt2);margin-top:16px;min-height:1.2em;max-width:340px;line-height:1.7}
+#dlGate .lg-back{display:inline-block;margin-top:22px;color:var(--ac2);font-size:.78rem;text-decoration:none}
+.dlg-bar{width:min(320px,80vw);height:6px;background:rgba(255,255,255,.08);border-radius:3px;margin:0 auto 18px;overflow:hidden}
+.dlg-bar i{display:block;height:100%;width:0;background:var(--grad);transition:width .15s}
