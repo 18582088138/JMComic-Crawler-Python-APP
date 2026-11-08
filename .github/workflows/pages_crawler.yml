@@ -12,7 +12,7 @@ on:
     inputs:
       TARGET:
         type: string
-        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。__cleanup__=保留清理，__delete__=按 DELETE_IDS 删除，__migrate__=V2.0 zip-only 存量迁移（SOURCE 选站点/auto=全部）'
+        description: '目标链接或ID（任意已支持站点；纯数字默认 JMComic 车号）。__cleanup__=保留清理，__delete__=按 DELETE_IDS 删除，__migrate__=V2.0 zip-only 存量迁移，__rename_dirs__=存量目录重命名为 id_标题（SOURCE 选站点/auto=全部）'
         required: true
 
       DELETE_IDS:

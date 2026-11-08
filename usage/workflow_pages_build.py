@@ -290,6 +290,15 @@ def main():
         migrate_zip_only.migrate_all(REPO_DIR, push=publish, only_site=only, dry=dry)
         return
 
+    # ---------- 存量目录重命名任务（comics/<id>/ → comics/<id>_标题） ----------
+    if raw_input.strip() == '__rename_dirs__':
+        import rename_dirs
+        only = None if source in ('', 'auto') else source
+        dry = env('JM_PAGES_MIGRATE_DRY') == '1'
+        log(f'目录重命名任务: 目标站点 = {only or "全部"}，dry-run = {dry}')
+        rename_dirs.rename_all(REPO_DIR, push=publish, only_site=only, dry=dry)
+        return
+
     # ---------- mock：本地构建调试，不碰分支 ----------
     if mock:
         mock_input = raw_input.split()[0] if raw_input.split() else raw_input  # mock 只跑第一个目标

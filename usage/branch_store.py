@@ -190,6 +190,16 @@ def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
             shutil.rmtree(target)
             log(f'gh-pages: 移除已下架 {cid}')
 
+    # 目录改名（__rename_dirs__ 存量重命名）：旧 gh-pages 目录清掉，新目录由下方复制补入
+    for cid in new_ids:
+        old_d = old_dir_of.get(cid)
+        new_d = dir_of[cid]
+        if old_d and old_d != new_d:
+            old_target = os.path.join(pages_dir, 'comics', old_d)
+            if os.path.isdir(old_target):
+                shutil.rmtree(old_target)
+                log(f'gh-pages: 目录改名 {old_d} → {new_d}')
+
     copy_ids = new_ids if only_ids is None else (new_ids & set(only_ids))
     src_comics = os.path.join(site_dir, 'comics')
     for cid in copy_ids:
