@@ -188,15 +188,24 @@ async function downloadOne(dir, m, fileName, repo, cb) {
 
   let lastErr = null;
   for (const base of rawUrls(repo, m, fileName)) {
+    const ac = new AbortController();
+    let stallTimer = null;
+    const bumpStall = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => ac.abort(), 20000);   // 20 秒无数据即判定卡死
+    };
+    const connTimer = setTimeout(() => ac.abort(), 45000);  // 连接超时 45s
+    let writable = null;
     try {
       let res, offset = 0;
       if (existing > 0) {
-        res = await fetch(base, { headers: { Range: 'bytes=' + existing + '-' } });
+        res = await fetch(base, { signal: ac.signal, headers: { Range: 'bytes=' + existing + '-' } });
         if (res.status === 206) offset = existing;
-        else res = await fetch(base);   // 不支持 Range / 文件已变：整包重来
+        else res = await fetch(base, { signal: ac.signal });   // 不支持 Range / 文件已变：整包重来
       } else {
-        res = await fetch(base);
+        res = await fetch(base, { signal: ac.signal });
       }
+      clearTimeout(connTimer);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const cr = res.headers.get('content-range');
       const total = offset + Number(
@@ -204,9 +213,10 @@ async function downloadOne(dir, m, fileName, repo, cb) {
       if (total && offset && total === existing) return { name: fileName, size: existing };  // 上次已完成
 
       const fh = await dir.getFileHandle(fileName, { create: true });
-      const writable = await fh.createWritable({ keepExistingData: offset > 0 });
+      writable = await fh.createWritable({ keepExistingData: offset > 0 });
       if (offset > 0) await writable.seek(offset);
       let received = offset;
+      bumpStall();
       if (!res.body) {  // 老浏览器无流：一次性写入
         const buf = await res.arrayBuffer();
         await writable.write(buf);
@@ -218,9 +228,11 @@ async function downloadOne(dir, m, fileName, repo, cb) {
           if (done) break;
           await writable.write(value);
           received += value.byteLength;
+          bumpStall();
           if (cb) cb(received, total);
         }
       }
+      clearTimeout(stallTimer);
       await writable.close();
       const finalSize = (await fh.getFile()).size;
       if (total && finalSize !== total) {
@@ -229,14 +241,21 @@ async function downloadOne(dir, m, fileName, repo, cb) {
       }
       return { name: fileName, size: finalSize };
     } catch (e) {
-      lastErr = e;
+      lastErr = (e && e.name === 'AbortError')
+        ? new Error('网络连接超时（raw 被墙或代理未开）')
+        : e;
+      // 尽力把已写入的半包落盘，供下次断点续传
+      if (writable) { try { await writable.close(); } catch (e3) { /* noop */ } }
       try {
         const fh = await dir.getFileHandle(fileName);
         existing = (await fh.getFile()).size;   // 留给下一轮当断点
       } catch (e2) { existing = 0; }
+    } finally {
+      clearTimeout(connTimer);
+      clearTimeout(stallTimer);
     }
   }
-  throw lastErr || new Error('下载失败（网络不通？）');
+  throw lastErr || new Error('下载失败（网络不通，请检查代理后重试）');
 }
 
 /**
