@@ -2,9 +2,11 @@
 分支存储层：站点数据按「每站一个孤立分支」管理，gh-pages 为装配产物
 
 分支模型：
-    data/<site>   孤立分支，单 commit（force-push），保存该站 comics/ + index.json
+    data/<site>   孤立分支，单 commit（force-push），保存该站
+                  comics/<id>/（zip/分卷 + manifest.json + cover.jpg）+ index.json
     gh-pages      孤立分支，单 commit（force-push），Pages 源。内容 =
-                  前端(master docs/) + 各站 comics/ 合并 + data/*.json 聚合
+                  前端(master docs/) + 各站 manifest/封面（元数据装配，
+                  V2.0 起不含漫画内容）+ data/*.json 聚合
 
 单 commit force-push 让 git 历史永不积累图片 blob，解决仓库体积膨胀；
 相同内容的 blob 在 git 对象库中只存一份，data 分支与 gh-pages 不重复占空间。
@@ -151,13 +153,17 @@ def bump_sw_version(pages_dir):
 
 
 def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
-    """把某站 worktree 的内容同步进 gh-pages worktree：
+    """把某站 worktree 的内容同步进 gh-pages worktree（V2.0 装配瘦身）：
 
-    - 覆盖/新增该站 comics/<id>（only_ids 给定时只同步这些，其余保持不动——
-      增量同步避免每次构建复制全站数据；全量校准用 reassemble_pages.py）
+    - 每本只同步 manifest.json + cover.jpg 两个小文件——漫画内容（zip/分卷）
+      留在 data/<site> 分支，由前端经 raw 链路下载到本地阅读；
+      gh-pages 只承担「元数据 + 封面 + 聚合索引」，站点体积 MB 级、Pages 构建稳定
+    - only_ids 给定时只同步这些，其余保持不动（增量装配）；
+      全量校准用 reassemble_pages.py
     - 删除该站已下架（retention 清掉）的 comics/<id>
     - 更新 data/index-<site>.json 与聚合 data/comics.json
     """
+    META_FILES = ('manifest.json', 'cover.jpg')
     with open(os.path.join(site_dir, 'index.json'), 'r', encoding='utf-8') as f:
         site_index = json.load(f)
     new_ids = {c['id'] for c in site_index.get('comics', [])}
@@ -186,9 +192,14 @@ def sync_site_comics(site_dir, pages_dir, site, only_ids=None):
         dest = os.path.join(pages_dir, 'comics', str(cid))
         if not os.path.isdir(src):
             continue
+        # 整目录替换：顺带清掉 v2 时代装配进来的散图（迁移期间自然瘦身）
         if os.path.isdir(dest):
             shutil.rmtree(dest)
-        shutil.copytree(src, dest)
+        os.makedirs(dest, exist_ok=True)
+        for name in META_FILES:
+            p = os.path.join(src, name)
+            if os.path.isfile(p):
+                shutil.copy2(p, os.path.join(dest, name))
 
     with open(old_index_path, 'w', encoding='utf-8') as f:
         json.dump(site_index, f, ensure_ascii=False, indent=2)
