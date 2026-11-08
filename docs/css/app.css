@@ -391,3 +391,14 @@ a{color:var(--ac2);text-decoration:none}
 }
 @media(min-width:768px){#toast{bottom:36px}}
 #toast.show{transform:translate(-50%,0)}
+
+/* ---------- 本地存储面板 ---------- */
+.storow{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.05)}
+.storow:last-child{border-bottom:none}
+.storow .sdot{flex:none;font-size:1rem}
+.storow .st{flex:1;min-width:0}
+.storow .st b{display:block;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.storow .st span{font-size:.68rem;color:var(--txt3)}
+.storow .sdel{flex:none;border:1px solid var(--line);background:var(--card2);color:var(--txt2);
+  font-size:.7rem;padding:5px 12px;border-radius:9px;cursor:pointer;font-family:inherit}
+.storow .sdel:active{background:var(--card)}

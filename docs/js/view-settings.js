@@ -1,6 +1,7 @@
-/* 「设置」分页：仓库/Token/首次检查清单/愿望清单 */
-import { $, toast, esc, relTime, store } from './util.js';
+/* 「设置」分页：仓库/Token/首次检查清单/本地存储/愿望清单 */
+import { $, toast, esc, relTime, fmtSize, store } from './util.js';
 import { detectRepo } from './github.js';
+import * as dlstore from './dlstore.js';
 
 function loadWishlist() {
   const box = $('#wishList');
@@ -22,6 +23,44 @@ function loadWishlist() {
     .catch(() => {
       box.innerHTML = '<div class="wempty">暂时无法读取愿望清单。</div>';
     });
+}
+
+/* ---------- 本地漫画存储面板 ---------- */
+
+async function renderStoragePanel() {
+  const mode = dlstore.storeMode();
+  const dirName = mode === 'fsa' ? await dlstore.customDirName() : '';
+  const persisted = await dlstore.persisted();
+  $('#storeModeHint').innerHTML = mode === 'fsa'
+    ? `已选择自定义文件夹：<b>${esc(dirName || '(已失效，请重选)')}</b>（资源管理器可直接看到；每次冷启动首次操作需点一次授权）`
+    : '当前使用浏览器内置存储（OPFS）：全平台可用，对用户不可见，数据随站点保存。';
+
+  const est = await dlstore.estimate();
+  $('#storageEst').textContent = est
+    ? `浏览器存储占用 ${fmtSize(est.usage)} / 配额约 ${fmtSize(est.quota)}${persisted ? '（已申请防自动清理）' : ''}`
+    : '当前浏览器不支持查询存储占用。';
+
+  const list = dlstore.listLocal();
+  const box = $('#localList');
+  if (!list.length) {
+    box.innerHTML = '<div class="wempty">还没有下载过本子。到书架点「阅读」即可自动下载。</div>';
+  } else {
+    box.innerHTML = list.map(r => `
+      <div class="storow" data-id="${esc(r.id)}">
+        <span class="sdot">${r.store === 'fsa' ? '📁' : '🧠'}</span>
+        <div class="st"><b title="${esc(r.title)}">${esc(r.title)}</b>
+          <span>${esc(r.id)} · ${fmtSize(r.bytes)} · ${relTime(r.ts)}下载</span></div>
+        <button class="sdel">删除</button>
+      </div>`).join('');
+    box.querySelectorAll('.storow').forEach(row => {
+      row.querySelector('.sdel').addEventListener('click', async () => {
+        const id = row.dataset.id;
+        await dlstore.deleteLocal(id);
+        toast('已删除本地包（云端不受影响）');
+        renderStoragePanel();
+      });
+    });
+  }
 }
 
 export function initSettingsView() {
@@ -80,5 +119,38 @@ export function initSettingsView() {
     }, () => toast('读取剪贴板失败，请检查浏览器权限'));
   });
   $('#refreshWishBtn').addEventListener('click', () => { loadWishlist(); toast('已刷新'); });
+
+  // 本地存储面板
+  $('#pickDirBtn').addEventListener('click', async () => {
+    try {
+      const name = await dlstore.pickCustomDir();
+      toast(`已选择文件夹「${name}」，之后的下载会保存到这里`, 3500);
+    } catch (e) {
+      if (e && e.name !== 'AbortError') toast('选择文件夹失败：' + (e.message || e));
+    }
+    renderStoragePanel();
+  });
+  $('#useOpfsBtn').addEventListener('click', () => {
+    dlstore.useOpfs();
+    toast('已切回浏览器内置存储（原文件夹里的文件不会被删除）');
+    renderStoragePanel();
+  });
+  $('#clearAllLocalBtn').addEventListener('click', async function () {
+    if (this.dataset.armed !== '1') {
+      this.dataset.armed = '1';
+      this.textContent = '⚠️ 确认清空全部本地漫画？';
+      setTimeout(() => { this.dataset.armed = ''; this.textContent = '🗑 清空全部本地漫画'; }, 4000);
+      return;
+    }
+    this.disabled = true;
+    const n = await dlstore.clearAllLocal();
+    this.disabled = false;
+    this.dataset.armed = '';
+    this.textContent = '🗑 清空全部本地漫画';
+    toast(`已清空 ${n} 本的本地包`);
+    renderStoragePanel();
+  });
+  renderStoragePanel();
+
   loadWishlist();
 }

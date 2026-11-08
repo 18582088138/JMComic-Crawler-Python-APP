@@ -185,6 +185,23 @@
       </div>
 
       <div class="card setcard">
+        <h2><span class="dot"></span>本地漫画存储</h2>
+        <div class="hint">V2.0 起阅读方式为「首次下载压缩包到本机 → 本地解包秒开」，下载过的本子断网可读。注意：清理浏览器数据、或 iPhone 上连续一周不访问，本地包可能被回收（云端永远可重新下载）。</div>
+
+        <b class="sec-title">存储位置</b>
+        <div class="row2">
+          <button class="bigbtn ghost" id="pickDirBtn" style="margin-top:4px">📁 自定义文件夹（仅桌面 Chrome/Edge）</button>
+          <button class="bigbtn ghost" id="useOpfsBtn" style="margin-top:4px">🧠 切回浏览器内置存储</button>
+        </div>
+        <div class="hint" id="storeModeHint"></div>
+
+        <b class="sec-title">占用与已下载清单</b>
+        <div class="hint" id="storageEst"></div>
+        <div id="localList"></div>
+        <button class="bigbtn ghost" id="clearAllLocalBtn" style="margin-top:8px">🗑 清空全部本地漫画</button>
+      </div>
+
+      <div class="card setcard">
         <h2><span class="dot"></span>愿望清单 <button class="refresh" id="refreshWishBtn" style="margin-left:auto;border:none;background:none;color:var(--ac2);font-size:.72rem;cursor:pointer;font-family:inherit">刷新</button></h2>
         <div class="hint">提交了未收录站点的链接、通用爬虫也爬不动时，站点域名会自动记入这里，作为后续适配新平台的候选。</div>
         <div id="wishList" style="margin-top:8px"></div>
