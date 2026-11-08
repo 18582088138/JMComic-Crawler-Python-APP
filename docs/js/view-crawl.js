@@ -379,12 +379,6 @@ export function initCrawlView(onTaskDone) {
       toast('已粘贴（追加到现有内容）');
     }, () => toast('读取剪贴板失败，请手动粘贴'));
   });
-  $('#modeSeg').addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    mode = b.dataset.mode;
-    $$('button', e.currentTarget).forEach(x => x.classList.toggle('on', x === b));
-  });
   $('#submitBtn').addEventListener('click', function () { submitCurrent(this); });
   $('#offlineBtn').addEventListener('click', () => { location.href = 'reader.html?local=1'; });
   $('#taskRefreshBtn').addEventListener('click', () => { renderQueueCard(); loadLastRun(); toast('已检查最新状态'); });

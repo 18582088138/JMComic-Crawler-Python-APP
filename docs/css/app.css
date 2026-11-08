@@ -402,3 +402,6 @@ a{color:var(--ac2);text-decoration:none}
 .storow .sdel{flex:none;border:1px solid var(--line);background:var(--card2);color:var(--txt2);
   font-size:.7rem;padding:5px 12px;border-radius:9px;cursor:pointer;font-family:inherit}
 .storow .sdel:active{background:var(--card)}
+
+/* ---------- 详情页下架危险操作 ---------- */
+.bact.danger{color:var(--err)}

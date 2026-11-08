@@ -1,6 +1,7 @@
-/* 「书架」分页：站点筛选 + 喜欢置顶 + 分页 + 阅读/下载 + 离线角标 + 满库清理 + 手动装配 */
+/* 「书架」分页：站点筛选 + 喜欢置顶 + 分页 + 阅读/下载 + 已下载角标 + 满库清理 + 手动装配 */
 import { $, $$, toast, esc, relTime, store, siteOf, siteMeta } from './util.js';
 import { detectRepo, dispatchWorkflow, repoInfo, newIssueUrl } from './github.js';
+import * as dlstore from './dlstore.js';
 
 /* dispatchWorkflow 在 github.js 中已支持 workflow 参数（装配用 pages_deploy.yml） */
 
@@ -73,11 +74,10 @@ function renderOverflowBanner() {
     <div class="hint">${overflow.length} 本旧本子超出保留数（每站 ${keep} 本）。
     可先把它们下载到本地，再点「确认清理」从书架删除；若不理会，超出 ${keep}+10 宽限后会被自动硬删。</div>
     <div class="overflow-list">${overflow.map(c => {
-      const zipName = c.zipName || ('JM' + c.id + '.zip');
       return `<div class="orow">
         <span class="ot" title="${esc(c.title)}">${esc(c.title)}</span>
         <span class="os">${esc(siteMeta(c.site || siteOf(c.id)).name)}</span>
-        ${c.hasZip ? `<a class="odl" href="comics/${encodeURIComponent(c.id)}/${encodeURIComponent(zipName)}" download>📦 下载</a>` : '<span class="os">无ZIP</span>'}
+        ${c.hasZip ? `<a class="odl" href="#/book/${encodeURIComponent(c.id)}">📦 下载</a>` : '<span class="os">无ZIP</span>'}
       </div>`;
     }).join('')}</div>
     <button class="bigbtn" id="cleanupBtn">🧹 确认清理这 ${overflow.length} 本</button>`;
@@ -162,14 +162,13 @@ function renderShelf() {
     const site = c.site || siteOf(c.id);
     const sm = siteMeta(site);
     let badges = '';
-    if (c.hasZip) badges += '<span class="badge zip">ZIP</span>';
-    if (store.get('offline_' + c.id, false)) badges += '<span class="badge off">已离线</span>';
+    if (c.zipParts > 1) badges += `<span class="badge zip">分卷×${c.zipParts}</span>`;
+    if (store.get('dl_' + c.id, null)) badges += '<span class="badge off">已下载</span>';
     if (prog) badges += `<span class="badge prog">读到 ${prog.ch}章${prog.p ? ' ' + prog.p + '页' : ''}</span>`;
     const readBtn = c.hasReader !== false
       ? `<a class="read" href="reader.html?id=${encodeURIComponent(c.id)}">📖 阅读</a>` : '';
-    const zipName = c.zipName || ('JM' + c.id + '.zip');
     const dlBtn = c.hasZip
-      ? `<a class="dl" href="comics/${encodeURIComponent(c.id)}/${encodeURIComponent(zipName)}" download>📦 下载</a>` : '';
+      ? `<a class="dl" data-save="${esc(c.id)}" href="javascript:void(0)">📦 下载</a>` : '';
     const favOn = favs.has(String(c.id));
     return `<div class="book" style="animation-delay:${i * 0.04}s" data-id="${esc(c.id)}">
       <div class="cover"><div class="ph">📖</div>
@@ -205,6 +204,17 @@ function renderShelf() {
       toggleFav(btn.dataset.fav);
       renderShelf();
       toast(favs.has(String(btn.dataset.fav)) ? '已标记喜欢，置顶显示 ❤' : '已取消喜欢');
+    });
+  });
+  // 保存压缩包：单卷直存 raw；分卷进详情页逐卷保存
+  box.querySelectorAll('[data-save]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const c = all.find(x => String(x.id) === el.dataset.save);
+      if (!c) return;
+      if (c.zipParts > 1) { location.hash = '#/book/' + encodeURIComponent(c.id); return; }
+      const n = dlstore.saveToSystem(c);
+      if (n) toast('已开始下载到系统文件夹');
     });
   });
   box.querySelectorAll('.book').forEach(el => {
@@ -333,14 +343,14 @@ function submitDelete(btn) {
   const restore = () => { btn.disabled = false; updateSelBar(); };
   const onSubmitted = () => {
     toast(`删除任务已提交（${ids.length} 本），约 1~2 分钟生效`, 3500);
-    // 本地同步清理：进度/离线标记/收藏 + SW 图片缓存
+    // 本地同步清理：进度/收藏（本地已下载的 zip 不随下架删除——用户资产，
+    // 可在设置页「本地漫画存储」清单里单独删除）
     ids.forEach(id => {
       localStorage.removeItem('jm_prog_' + id);
       localStorage.removeItem('jm_offline_' + id);
       favs.delete(String(id));
     });
     store.set('favs', Array.from(favs));
-    purgeSWCache(ids);
     setSelecting(false);
     setTimeout(() => { loadShelf(); }, 90000);
   };
@@ -370,18 +380,6 @@ function submitDelete(btn) {
       onSubmitted();
     }).catch(() => { restore(); toast('网络异常'); });
   }
-}
-
-/* 通知 SW 清除被删本子的离线图片缓存 */
-function purgeSWCache(ids) {
-  try {
-    const msg = { type: 'purge', ids };
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage(msg);
-    } else if (navigator.serviceWorker) {
-      navigator.serviceWorker.ready.then(reg => reg.active && reg.active.postMessage(msg)).catch(() => {});
-    }
-  } catch (e) { /* 缓存清理失败不影响主流程 */ }
 }
 
 export function initShelfView() {

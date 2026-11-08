@@ -1,6 +1,8 @@
-/* 「作品详情」视图：目录清单 + 续读 + 抓更多章节 + 下载 + 源站
+/* 「作品详情」视图：目录清单 + 续读 + 抓更多章节 + 保存ZIP/分卷 + 本地删除/下架 + 源站
    路由：#/book/<id>（多话作品按一本管理，章节在此挑选阅读） */
 import { $, $$, toast, esc, relTime, fmtSize, store, siteOf, siteMeta } from './util.js';
+import { detectRepo, dispatchWorkflow, newIssueUrl } from './github.js';
+import * as dlstore from './dlstore.js';
 
 let currentId = null;
 let manifest = null;
@@ -52,17 +54,26 @@ function render() {
   const acts = [];
   const resume = resumeChapter();
   acts.push(`<a class="bact primary" href="${readUrl(resume)}">▶ ${prog ? `续读 第${resume}章` : '开始阅读'}</a>`);
-  if (m.hasZip && m.zip) {
-    acts.push(`<a class="bact" href="comics/${encodeURIComponent(m.id)}/${encodeURIComponent(m.zip)}" download>📦 下载 ZIP（含全部已上架章节）</a>`);
-  } else if (m.zipNote) {
-    acts.push(`<div class="bact ghost" style="cursor:default">📦 ${esc(m.zipNote)}（可在线阅读）</div>`);
-  }
+  // 保存压缩包到本机：单卷直链，分卷逐卷列出（raw 导航下载）
+  const files = dlstore.bookFiles(m);
+  const repo = detectRepo();
+  files.forEach(f => {
+    const label = files.length > 1
+      ? `📦 保存 ${esc(f.name)}（${f.bytes ? fmtSize(f.bytes) : '分卷'}）`
+      : '📦 保存 ZIP 到本机（含全部已上架章节）';
+    const url = dlstore.rawUrls(repo, m, f.name)[0];
+    acts.push(`<a class="bact" href="${esc(url)}" download>${label}</a>`);
+  });
   if (hasMore) {
     acts.push(`<button class="bact" id="fetchMoreBtn">⬆ 抓取更多章节（还有 ${total - uploaded} 章未上架）</button>`);
   }
   if (m.sourceUrl) {
     acts.push(`<a class="bact ghost" href="${esc(m.sourceUrl)}" target="_blank" rel="noopener">🔗 源站查看</a>`);
   }
+  // 删除双选项：本地删除（仅本机副本） / 下架（云端删除）
+  const downloaded = !!dlstore.getReg(m.id);
+  acts.push(`<button class="bact ghost" id="delLocalBtn" ${downloaded ? '' : 'disabled'}>🗑 本地删除（仅本机副本）</button>`);
+  acts.push(`<button class="bact ghost danger" id="delCloudBtn">🧹 下架（从书架与云端删除）</button>`);
   $('#bookActs').innerHTML = acts.join('');
   if (hasMore) {
     $('#fetchMoreBtn').addEventListener('click', () => {
@@ -75,6 +86,46 @@ function render() {
       location.hash = '#/crawl';
     });
   }
+
+  // 删除双选项事件
+  $('#delLocalBtn').addEventListener('click', async () => {
+    await dlstore.deleteLocal(m.id, m);
+    toast('已删除本机副本（云端不受影响）');
+    render();
+  });
+  $('#delCloudBtn').addEventListener('click', async function () {
+    if (this.dataset.armed !== '1') {
+      this.dataset.armed = '1';
+      this.textContent = '⚠️ 确认从云端删除？';
+      setTimeout(() => { this.dataset.armed = ''; this.textContent = '🧹 下架（从书架与云端删除）'; }, 4000);
+      return;
+    }
+    this.disabled = true;
+    const token = store.get('token', '');
+    if (token) {
+      try {
+        const status = await dispatchWorkflow(repo, {
+          TARGET: '__delete__', DELETE_IDS: m.id, SOURCE: 'auto', BATCH: '1',
+          MODE: '在线阅览 + 打包下载', KEEP_LATEST: String(store.get('keep', 30)), CLIENT_IMPL: '',
+        });
+        if (status === 204) {
+          toast('下架任务已提交，约 1~2 分钟生效（本地副本不受影响）', 3500);
+          location.hash = '#/shelf';
+        } else {
+          toast('触发失败：HTTP ' + status);
+          this.disabled = false;
+        }
+      } catch (e) {
+        toast('网络错误，请重试');
+        this.disabled = false;
+      }
+    } else {
+      window.open(newIssueUrl(repo, '[jm] __delete__',
+        'delete: ' + m.id + '\n\n删除任务，由作品详情页引导创建。'), '_blank');
+      toast('请在打开的页面点 Create 提交（约 1~2 分钟生效）', 4500);
+      location.hash = '#/shelf';
+    }
+  });
 
   // 目录清单
   const chList = $('#bookChapters');
