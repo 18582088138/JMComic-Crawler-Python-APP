@@ -1,11 +1,12 @@
-/* 云书架 Service Worker：真·离线
+/* 云书架 Service Worker（V2.0）
    - 应用外壳（HTML/CSS/JS/vendor）：stale-while-revalidate
-   - 漫画图片 comics/*：cache-first（看过即缓存，配合阅读器「全本缓存」实现断网阅读）
    - 数据 data/*.json：network-first（书架/状态永远尽量拿最新，离线时回退缓存）
+   - 漫画图片 comics/* 的 cache-first 策略已退役（V2.0 漫画内容只存在于
+     data 分支的 zip，经 dlstore 下载到 OPFS/自定义文件夹后本地直读，
+     不再经过 SW 网络路径）
 */
 const VERSION = 'v1';
 const SHELL_CACHE = 'shell-' + VERSION;
-const COMIC_CACHE = 'comics-' + VERSION;
 const DATA_CACHE = 'data-' + VERSION;
 
 const SHELL = [
@@ -13,6 +14,7 @@ const SHELL = [
   'css/app.css', 'css/reader.css',
   'js/app.js', 'js/util.js', 'js/github.js', 'js/task.js',
   'js/view-crawl.js', 'js/view-find.js', 'js/view-shelf.js', 'js/view-settings.js',
+  'js/view-book.js', 'js/dlstore.js',
   'js/reader.js', 'js/sites-data.js',
   'vendor/jszip.min.js',
 ];
@@ -27,7 +29,7 @@ self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
       .then(keys => Promise.all(keys
-        .filter(k => ![SHELL_CACHE, COMIC_CACHE, DATA_CACHE].includes(k))
+        .filter(k => ![SHELL_CACHE, DATA_CACHE].includes(k))
         .map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
@@ -42,39 +44,11 @@ function inScope(url, seg) {
   return isSameOrigin(url) && url.pathname.includes('/' + seg + '/');
 }
 
-/* 书架删除本子时，同步清除其离线图片缓存 */
-self.addEventListener('message', e => {
-  const data = e.data || {};
-  if (data.type === 'purge' && Array.isArray(data.ids)) {
-    e.waitUntil((async () => {
-      const cache = await caches.open(COMIC_CACHE);
-      const keys = await cache.keys();
-      await Promise.all(keys
-        .filter(req => data.ids.some(id => req.url.includes('/comics/' + id + '/')))
-        .map(req => cache.delete(req)));
-    })());
-  }
-});
-
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (!isSameOrigin(url)) return;
-
-  // 漫画图片：cache-first
-  if (inScope(url, 'comics')) {
-    e.respondWith(
-      caches.open(COMIC_CACHE).then(async cache => {
-        const hit = await cache.match(req, { ignoreSearch: true });
-        if (hit) return hit;
-        const resp = await fetch(req);
-        if (resp.ok) cache.put(req, resp.clone());
-        return resp;
-      })
-    );
-    return;
-  }
 
   // 数据：network-first
   if (inScope(url, 'data')) {
